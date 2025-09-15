@@ -27,9 +27,9 @@ setwd(dirname(getActiveDocumentContext()$path))
 
 here::i_am("LLM_noText.R")
 
-load_dot_env('code/.env')
+#load_dot_env('code/.env')
 #dotenv::load_dot_env(file = here("env"))
-
+load_dot_env('env')
 
 ###################################################
 #INITIALISATION PARAMETRES
@@ -85,7 +85,7 @@ poser_question_CHAT <- function(question,api_key = cle_API) {
   body <- list(
     model = model_LLM,
     temperature = temp_LLM,  # pour des réponses précises et cohérentes (à tester)
-    max_tokens = 500,   # nb max de mots de la réponse générée (ici on attend une réponse concise)
+    max_tokens = 200,   # nb max de mots de la réponse générée (ici on attend une réponse concise)
     messages = list(
       list(role = "system", content = role_system),
       list(role = "user", content = question)
@@ -128,7 +128,7 @@ poser_question_GEMINI <- function(question, api_key = cle_API) {
       ),
       generationConfig = list(
         temperature = temp_LLM,
-        maxOutputTokens = 500
+        maxOutputTokens = 200
       )
     )
   )
@@ -199,24 +199,24 @@ if (english == 1) {
     paste0(
       "Forget previous instructions and previous answers. You are François Villeroy de Galhau (Governor of the Banque de France), and you are giving a speech on France economic outlook. Today is ",
       format(d, "%d %B %Y"), ". ",
-      "Using only information that was available on or before ", format(d, "%d %B %Y"), 
+      "Using only information that was available on or before ", format(d, "%d %B %Y", locale = "en_US.UTF-8"), 
       ", provide a numeric forecast (decimal percent with sign, e.g. +0.3) for French real GDP growth for Q", q_trim, " ", y_prev, 
       " and a confidence level (integer 0-100). Output EXACTLY in this format on a single line (no extra text):\n",
       "<forecast> (<confidence>)\n",
       "Example: +0.3 (80)\n",
-      "Do NOT use any information published after ", format(d, "%d %B %Y"), "."
+      "Do NOT use any information published after ", format(d, "%d %B %Y", locale = "en_US.UTF-8"), "."
     )
   }
   prompt_template_INSEE <- function(d, q_trim, y_prev) {
     paste0(
       "Forget previous instructions and previous answers. You are François Jean-Luc Tavernier, Director general of INSEE, and you are giving a speech on France economic outlook. Today is ",
       format(d, "%d %B %Y"), ". ",
-      "Using only information that was available on or before ", format(d, "%d %B %Y"), 
+      "Using only information that was available on or before ", format(d, "%d %B %Y", locale = "en_US.UTF-8"), 
       ", provide a numeric forecast (decimal percent with sign, e.g. +0.3) for French real GDP growth for Q", q_trim, " ", y_prev, 
       " and a confidence level (integer 0-100). Output EXACTLY in this format on a single line (no extra text):\n",
       "<forecast> (<confidence>)\n",
       "Example: +0.3 (80)\n",
-      "Do NOT use any information published after ", format(d, "%d %B %Y"), ".")
+      "Do NOT use any information published after ", format(d, "%d %B %Y", locale = "en_US.UTF-8"), ".")
   }
 } else {
   prompt_template_BDF <- function(d, q_trim, y_prev) {
@@ -293,7 +293,9 @@ for (dt in dates) {
   for (i in seq_len(n_repro)) {
     df_bdf[[paste0("forecast_", i)]]  <- parsed_list[[i]]$forecast
     df_bdf[[paste0("confidence_", i)]] <- parsed_list[[i]]$confidence
-    df_bdf[[paste0("raw_", i)]]        <- parsed_list[[i]]$raw
+    df_bdf[[paste0("question_", i)]]   <- q_BDF_text
+    df_bdf[[paste0("answer_", i)]]        <- parsed_list[[i]]$raw
+    
   }
   results_BDF[[row_id]] <- df_bdf
   
@@ -315,11 +317,13 @@ for (dt in dates) {
       list(forecast = NA_real_, confidence = NA_integer_, raw = txt)
     }
   })
+  
   df_insee <- data.frame(Date = as.character(current_date), stringsAsFactors = FALSE)
   for (i in seq_len(n_repro)) {
     df_insee[[paste0("forecast_", i)]]  <- parsed_insee[[i]]$forecast
     df_insee[[paste0("confidence_", i)]] <- parsed_insee[[i]]$confidence
-    df_insee[[paste0("raw_", i)]]        <- parsed_insee[[i]]$raw
+    df_insee[[paste0("question_", i)]]   <- q_INSEE_text
+    df_insee[[paste0("answer_", i)]]        <- parsed_insee[[i]]$raw
   }
   results_INSEE[[row_id]] <- df_insee
   
@@ -430,7 +434,7 @@ cor(df_merged$BDF_forecast, df_merged$INSEE_forecast, method = "spearman") #corr
 #Distribution  des prev selon BDF/INSEE pour chaque date : violin (((à voir lequel plus pertinent)))
 ggplot(both_long, aes(x = source, y = as.numeric(forecast), fill = source)) +
   geom_violin(alpha = 0.6, trim = FALSE) +
-  geom_boxplot(width = 0.1, outlier.shape = NA, alpha = 0.7) + # médiane + quartiles  facet_wrap(~ Date, scales = "free_y") +
+  facet_wrap(~ Date, scales = "free_y") +
   labs(
     title = "Distribution des prévisions par organisme",
     y = "Prévision",
@@ -462,6 +466,64 @@ ggplot(both_long, aes(x = as.numeric(forecast), fill = source, color = source)) 
 
 
 
-#############A FAIRE : 
+##############################
+# Comparaison FR vs EN
+############################
 
-#COMPARAISON LANGUE fr vs en
+#Refaire la boucle de sorte à ce qu'on aie la comparaison en vs fr
+
+#Admettons que la première boucle soit en anglais lançons la seconde : 
+df_results_BDF_fr <- do.call(rbind, results_BDF)
+df_results_INSEE_fr <- do.call(rbind, results_INSEE)
+
+
+# joindre les deux
+bdf_long_fr   <- to_long(df_results_BDF_fr, "BDF")
+insee_long_fr <- to_long(df_results_INSEE_fr, "INSEE")
+
+both_long_fr <- bind_rows(bdf_long_fr, insee_long_fr)
+
+##Avant de merge, ajoutons une variable qui décrit la langue
+both_long <- both_long |> mutate("language" = "EN") 
+both_long_fr <- both_long_fr |> mutate("language" = "FR")
+
+##maintenant merge
+both_long_en_fr <- bind_rows(both_long, both_long_fr) |>
+  select(Date, rep:language)
+
+  
+#
+# Stats descriptives par date, source et langue
+
+stats_date_lang <- both_long_en_fr |>
+  group_by(Date, language, source) |>
+  summarise(
+    Moyenne_Forecast   = mean(forecast, na.rm = TRUE),
+    EcartType_Forecast = sd(forecast, na.rm = TRUE),
+    Moyenne_Confiance  = mean(confidence, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Différence moyenne EN vs FR par date et source
+diff_langue_date <- stats_date_lang |>
+  pivot_wider(
+    id_cols = c(Date, source),
+    names_from = language,
+    values_from = c(Moyenne_Forecast, Moyenne_Confiance)
+  ) |>
+  mutate(
+    Diff_Forecast  = Moyenne_Forecast_EN - Moyenne_Forecast_FR,
+    Diff_Confiance = Moyenne_Confiance_EN - Moyenne_Confiance_FR
+  )
+
+# Différence moyenne sur toutes les dates 
+diff_langue_moy <- diff_langue_date |>
+  group_by(source) |>
+  summarise(
+    Diff_Forecast_Moy   = mean(Diff_Forecast, na.rm = TRUE),
+    Diff_Confiance_Moy  = mean(Diff_Confiance, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print(diff_langue_moy)
+
