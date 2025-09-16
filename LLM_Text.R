@@ -54,6 +54,8 @@ LLM_configs <- list(
 # Dossier contenant les documents qui seront analysés
 document_folder <- "docEMC_PDF"
 
+
+    ##INUTILE MAIS PEUT ETRE CONSERVé
 # Liste les fichiers PDF dans data/
 files <- list.files(here("docEMC_PDF"), pattern = "\\.pdf$", full.names = FALSE)
 
@@ -61,14 +63,13 @@ files <- list.files(here("docEMC_PDF"), pattern = "\\.pdf$", full.names = FALSE)
 write.csv(data.frame(file = files),
           here("List_files_short.csv"),
           row.names = FALSE)
+        #####
 
-#CHARGER date des forecast
+#CHARGER date des forecast depuis l'excel
 
 date_prev_temp <- read_excel("Synthese_fileEMC.xlsx")
 
-# On suppose les colonnes : 
-# A = nom fichier, B = date courte, C = date longue, D = trimestre
-# On force les noms pour éviter les surprises
+#On choisis de prendre les dates de sortie des prévisions courtes jusqu'en 2020 puis celles des longues ensuite
 colnames(date_prev_temp)[1:4] <- c("fichier", "date_courte", "date_longue", "trimestre")
 
 # Extraire année depuis le nom du fichier
@@ -77,7 +78,7 @@ date_prev_temp <- date_prev_temp %>%
          mois_prev   = as.numeric(str_extract(fichier, "(?<=EMC_)\\d{1,2}(?=_)"))) |>
   filter(annee_prev >= 2015)
 
-# Choisir la bonne date selon les règles
+# Choisir la bonne date selon notre choix (à changer si nécessaire)
 date_prev_temp <- date_prev_temp %>%
   mutate(
     annee_prev = as.numeric(str_extract(fichier, "\\d{4}$")),
@@ -94,12 +95,11 @@ date_prev_temp <- date_prev_temp %>%
       annee_prev >= 2020 & annee_prev <= 2024 ~ date_longue_d
     )
   )
-# Nettoyer : retirer les lignes sans date (covid ou manquants)
+# Nettoyage
 date_prev <- date_prev_temp %>%
   select(fichier, trimestre, date_finale_d) %>%
   filter(!is.na(date_finale_d))
 
-# Résultat
 print(date_prev)
 
 
@@ -457,5 +457,8 @@ cat("Les résultats pour la question INSEE ont été sauvegardés dans le fichie
 t2 <- Sys.time()
 diff(range(t1,t2))
 
+#### A FAIRE : 
 
+#PQ CA BUG, MODIFIER LES PROMPT (MENTIONNER LA PIECE JOINTE), VERIFIER LES FONCTIONS, ENLEVER LES PARTIES PREV DES PDF, VOIR QUELLE VERSION DU LLM METTRE
+#VOIR QUELS LLMS METTRE, CHERCHER TS PERTINENTE POUR COMPARER
 
