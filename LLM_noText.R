@@ -77,7 +77,7 @@ poser_question_CHAT <- function(question,api_key = cle_API) {
   
   
   if (english == 0) {
-    role_system <- "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aides de tes connaissances et de tes recherches, n'invente pas de faits."
+    role_system <- "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aides de vos connaissances et de vos recherches, n'inventez pas de faits."
   } else {
     role_system <- "You will act as the economic agent you are told to be. Answer based on your knowledge in less than 200 words, and researches, do not invent facts."
   }
@@ -107,11 +107,10 @@ poser_question_GEMINI <- function(question, api_key = cle_API) {
   model_query <- paste0(model_LLM, ":generateContent")
   
   if (english == 0) {
-    role_system <- "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aides de tes connaissances et de tes recherches, n'invente pas de faits."
+    role_system <- "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aides de vos connaissances et de vos recherches, n'inventez pas de faits."
   } else {
     role_system <- "You will act as the economic agent you are told to be. Answer based on your knowledge in less than 200 words, and researches, do not invent facts."
   }
-  # à modifier si prompt narratif?
   
   response <- POST(
     url = paste0("https://generativelanguage.googleapis.com/v1beta/models/", model_query),
@@ -154,7 +153,7 @@ poser_question_CLAUDE <- function(question, api_key = cle_API) {
   )
   
   if (english == 0) {
-    role_system <- "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aides de tes connaissances et de tes recherches, n'invente pas de faits."
+    role_system <- "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aides de vos connaissances et de vos recherches, n'inventez pas de faits."
   } else {
     role_system <- "You will act as the economic agent you are told to be. Answer based on your knowledge in less than 200 words, and researches, do not invent facts."
   }
@@ -193,32 +192,35 @@ dates <- as.Date(c("2023-03-15", "2023-06-15")) #à changer manuellement
 #####################"
 
 
-
 if (english == 1) {
+  try(Sys.setlocale("LC_TIME", "English"), silent = TRUE)
+  try(Sys.setlocale("LC_TIME", "en_US.UTF-8"), silent = TRUE)
   prompt_template_BDF <- function(d, q_trim, y_prev) {
     paste0(
       "Forget previous instructions and previous answers. You are François Villeroy de Galhau (Governor of the Banque de France), and you are giving a speech on France economic outlook. Today is ",
       format(d, "%d %B %Y"), ". ",
-      "Using only information that was available on or before ", format(d, "%d %B %Y", locale = "en_US.UTF-8"), 
+      "Using only information that was available on or before ", format(d, "%d %B %Y"), 
       ", provide a numeric forecast (decimal percent with sign, e.g. +0.3) for French real GDP growth for Q", q_trim, " ", y_prev, 
       " and a confidence level (integer 0-100). Output EXACTLY in this format on a single line (no extra text):\n",
       "<forecast> (<confidence>)\n",
       "Example: +0.3 (80)\n",
-      "Do NOT use any information published after ", format(d, "%d %B %Y", locale = "en_US.UTF-8"), "."
+      "Do NOT use any information published after ", format(d, "%d %B %Y"), "."
     )
   }
   prompt_template_INSEE <- function(d, q_trim, y_prev) {
     paste0(
       "Forget previous instructions and previous answers. You are François Jean-Luc Tavernier, Director general of INSEE, and you are giving a speech on France economic outlook. Today is ",
       format(d, "%d %B %Y"), ". ",
-      "Using only information that was available on or before ", format(d, "%d %B %Y", locale = "en_US.UTF-8"), 
+      "Using only information that was available on or before ", format(d, "%d %B %Y"), 
       ", provide a numeric forecast (decimal percent with sign, e.g. +0.3) for French real GDP growth for Q", q_trim, " ", y_prev, 
       " and a confidence level (integer 0-100). Output EXACTLY in this format on a single line (no extra text):\n",
       "<forecast> (<confidence>)\n",
       "Example: +0.3 (80)\n",
-      "Do NOT use any information published after ", format(d, "%d %B %Y", locale = "en_US.UTF-8"), ".")
+      "Do NOT use any information published after ", format(d, "%d %B %Y"), ".")
   }
 } else {
+  try(Sys.setlocale("LC_TIME", "French"), silent = TRUE)
+  try(Sys.setlocale("LC_TIME", "fr_FR.UTF-8"), silent = TRUE)
   prompt_template_BDF <- function(d, q_trim, y_prev) {
     paste0(
       "Oublier les instructions et les réponses précédentes. Vous êtes François Villeroy de Galhau, le Gouverneur de la Banque de France, qui prononce un discours sur les perspectives économiques de la France. Nous sommes le ",
