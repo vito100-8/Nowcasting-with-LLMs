@@ -121,35 +121,16 @@ if (english == 1) {
       format(d, "%d %B %Y"), ". ",
       "Using only information available on or before ", format(d, "%d %B %Y"), 
       ", provide a numeric forecast (decimal percent, e.g. +0.3) for French real GDP growth for Q", q_trim, " ", y_prev, 
-      " and a confidence level (0-100). Output EXACTLY on one line:\n",
+      " and a confidence level (0-100). Output EXACTLY on one line :\n",
       "<forecast> (<confidence>)"
     )
   }
-  prompt_template_INSEE <- function(d, q_trim, y_prev) {
-    paste0(
-      "Forget previous instructions. You are Jean-Luc Tavernier (Director General of INSEE). Today is ",
-      format(d, "%d %B %Y"), ". ",
-      "Using only information available on or before ", format(d, "%d %B %Y"), 
-      ", provide a numeric forecast (decimal percent, e.g. +0.3) for French real GDP growth for Q", q_trim, " ", y_prev, 
-      " and a confidence level (0-100). Output EXACTLY on one line:\n",
-      "<forecast> (<confidence>)"
-    )
-  }
+  
 } else {
   Sys.setlocale("LC_TIME", "French")
   prompt_template_BDF <- function(d, q_trim, y_prev) {
     paste0(
       "Oubliez les instructions précédentes. Vous êtes François Villeroy de Galhau, Gouverneur de la Banque de France. Nous sommes le ",
-      format(d, "%d %B %Y"), ". ",
-      "En utilisant uniquement les informations disponibles au plus tard le ", format(d, "%d %B %Y"),
-      ", fournissez une prévision numérique (pourcentage avec signe, ex. +0.3) pour la croissance du PIB réel français au T", q_trim, " ", y_prev,
-      " et un niveau de confiance (0-100). Renvoyez EXACTEMENT sur une seule ligne:\n",
-      "<prévision> (<confiance>)"
-    )
-  }
-  prompt_template_INSEE <- function(d, q_trim, y_prev) {
-    paste0(
-      "Oubliez les instructions précédentes. Vous êtes Jean-Luc Tavernier, DG de l’INSEE. Nous sommes le ",
       format(d, "%d %B %Y"), ". ",
       "En utilisant uniquement les informations disponibles au plus tard le ", format(d, "%d %B %Y"),
       ", fournissez une prévision numérique (pourcentage avec signe, ex. +0.3) pour la croissance du PIB réel français au T", q_trim, " ", y_prev,
@@ -176,9 +157,8 @@ chat_gemini <- chat_google_gemini( system_prompt = "You will act as the economic
                                    base_url = "https://generativelanguage.googleapis.com/v1beta/", 
                                    api_key = cle_API, 
                                    model = "gemini-2.5-flash", 
-                                   params(temperature = 0.7, max_tokens = 300)
+                                   params(temperature = 0.7, max_tokens = 1000)
                                    )
-
 
 # Creation de la list contenant les résultats
 results_BDF <- list()
@@ -215,11 +195,16 @@ for (dt in dates) {
   
   
   # appel à Gemini en intégrant le document voulu
-  out_list <- future_lapply(seq_len(n_repro), function(i) {
+  out_list <- lapply(seq_len(n_repro), function(i) {
+    tryCatch({
     resp <- chat_gemini$chat(uploaded_doc, prompt_text)
     
-    return(resp)})
+    return(resp)}, error = function(e) {
+      message("API error: ", conditionMessage(e))
+      return(NA_character_)
+    })
 
+  })
   
   # Parse les résultats
   parsed_list <- lapply(out_list, function(txt) {
@@ -233,7 +218,7 @@ for (dt in dates) {
   })
   
   #Df des résultats
-  df_bdf <- data.frame(Date = as.character(current_date),Prompt = prompt_text, stringsAsFactors = FALSE)
+  df_bdf <- data.frame(Date = as.character(current_date), Prompt = prompt_text, stringsAsFactors = FALSE)
   for (i in seq_len(n_repro)) {
     df_bdf[[paste0("forecast_", i)]]  <- parsed_list[[i]]$forecast
     df_bdf[[paste0("confidence_", i)]] <- parsed_list[[i]]$confidence
