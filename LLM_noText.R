@@ -37,7 +37,7 @@ load_dot_env('env')
 
 
 #langue utilisé
-english <- 1  # 1 si prompt en anglais
+english <- 0 # 1 si prompt en anglais
 
 # Définition des modèles et URLs
 LLM_configs <- list(
@@ -77,7 +77,7 @@ poser_question_CHAT <- function(question,api_key = cle_API) {
   
   
   if (english == 0) {
-    role_system <- "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aides de vos connaissances et de vos recherches, n'inventez pas de faits."
+    role_system <- "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et de vos recherches, n'inventez pas de faits."
   } else {
     role_system <- "You will act as the economic agent you are told to be. Answer based on your knowledge in less than 200 words, and researches, do not invent facts."
   }
@@ -107,7 +107,7 @@ poser_question_GEMINI <- function(question, api_key = cle_API) {
   model_query <- paste0(model_LLM, ":generateContent")
   
   if (english == 0) {
-    role_system <- "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aides de vos connaissances et de vos recherches, n'inventez pas de faits."
+    role_system <- "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et de vos recherches, n'inventez pas de faits."
   } else {
     role_system <- "You will act as the economic agent you are told to be. Answer based on your knowledge in less than 200 words, and researches, do not invent facts."
   }
@@ -153,7 +153,7 @@ poser_question_CLAUDE <- function(question, api_key = cle_API) {
   )
   
   if (english == 0) {
-    role_system <- "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aides de vos connaissances et de vos recherches, n'inventez pas de faits."
+    role_system <- "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et de vos recherches, n'inventez pas de faits."
   } else {
     role_system <- "You will act as the economic agent you are told to be. Answer based on your knowledge in less than 200 words, and researches, do not invent facts."
   }
@@ -194,7 +194,7 @@ dates <- as.Date(c("2023-03-15", "2023-06-15")) #à changer manuellement
 
 if (english == 1) {
   try(Sys.setlocale("LC_TIME", "English"), silent = TRUE)
-  try(Sys.setlocale("LC_TIME", "en_US.UTF-8"), silent = TRUE)
+  #try(Sys.setlocale("LC_TIME", "en_US.UTF-8"), silent = TRUE)
   prompt_template_BDF <- function(d, q_trim, y_prev) {
     paste0(
       "Forget previous instructions and previous answers. You are François Villeroy de Galhau (Governor of the Banque de France), and you are giving a speech on France economic outlook. Today is ",
@@ -220,10 +220,10 @@ if (english == 1) {
   }
 } else {
   try(Sys.setlocale("LC_TIME", "French"), silent = TRUE)
-  try(Sys.setlocale("LC_TIME", "fr_FR.UTF-8"), silent = TRUE)
+  #try(Sys.setlocale("LC_TIME", "fr_FR.UTF-8"), silent = TRUE)
   prompt_template_BDF <- function(d, q_trim, y_prev) {
     paste0(
-      "Oublier les instructions et les réponses précédentes. Vous êtes François Villeroy de Galhau, le Gouverneur de la Banque de France, qui prononce un discours sur les perspectives économiques de la France. Nous sommes le ",
+      "Oubliez les instructions et les réponses précédentes. Vous êtes François Villeroy de Galhau, le Gouverneur de la Banque de France, qui prononce un discours sur les perspectives économiques de la France. Nous sommes le ",
       format(d, "%d %B %Y"), ". ",
       "En utilisant uniquement les informations disponibles au plus tard le ", format(d, "%d %B %Y"),
       ", fournissez une prévision numérique (pourcentage décimal avec signe, ex. +0.3) pour la croissance du PIB réel français pour le trimestre ", q_trim, " ", y_prev,
@@ -235,7 +235,7 @@ if (english == 1) {
   }
   prompt_template_INSEE <- function(d, q_trim, y_prev) {
     paste0(
-      "Oublier les instructions et les réponses précédentes. Vous êtes Jean-Luc Tavernier, Directeur Général de l'INSEE, qui prononce un discours sur les perspectives économiques de la France. Nous sommes le ",
+      "Oubliez les instructions et les réponses précédentes. Vous êtes Jean-Luc Tavernier, Directeur Général de l'INSEE, qui prononce un discours sur les perspectives économiques de la France. Nous sommes le ",
       format(d, "%d %B %Y"), ". ",
       "En utilisant uniquement les informations disponibles au plus tard le ", format(d, "%d %B %Y"),
       ", fournissez une prévision numérique (pourcentage décimal avec signe, ex. +0.3) pour la croissance du PIB réel français pour le trimestre ", q_trim, " ", y_prev,
@@ -346,7 +346,7 @@ nom_fichier_INSEE <- paste0("resultats_INSEE_", LLM, "_prompt.xlsx")
 write.xlsx(df_results_INSEE, file = nom_fichier_INSEE, sheetName = 'prevision', rowNames = FALSE)
 cat("Les résultats pour la question INSEE ont été sauvegardés dans le fichier :", nom_fichier_INSEE, "\n")
 
-t2 <- Sys.time()
+t2 <- Sys.time(0.5)
 diff(range(t1,t2))
 
 
@@ -528,4 +528,9 @@ diff_langue_moy <- diff_langue_date |>
   )
 
 print(diff_langue_moy)
+
+
+
+##A FAIRE :
+#Test de comparaison de moyenne INSEE vs BDF aussi (malgré dep temporelle), lancer toutes les dates et plus d'itérations
 
