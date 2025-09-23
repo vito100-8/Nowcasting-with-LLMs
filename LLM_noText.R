@@ -320,11 +320,10 @@ for (dt in dates) {
     }
   })
   
-  df_insee <- data.frame(Date = as.character(current_date), stringsAsFactors = FALSE)
+  df_insee <- data.frame(Date = as.character(current_date),Prompt = prompt_text, stringsAsFactors = FALSE)
   for (i in seq_len(n_repro)) {
     df_insee[[paste0("forecast_", i)]]  <- parsed_insee[[i]]$forecast
     df_insee[[paste0("confidence_", i)]] <- parsed_insee[[i]]$confidence
-    df_insee[[paste0("question_", i)]]   <- q_INSEE_text
     df_insee[[paste0("answer_", i)]]        <- parsed_insee[[i]]$raw
   }
   results_INSEE[[row_id]] <- df_insee
