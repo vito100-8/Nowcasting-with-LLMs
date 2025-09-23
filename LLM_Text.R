@@ -198,7 +198,6 @@ for (dt in dates) {
   prompt_text <- prompt_template_BDF(current_date, trimestre_index ,
                                      year_prev)
   
-  chat_gemini$chat(uploaded_doc)
   # appel à Gemini en intégrant le document voulu
   out_list <- future_lapply(seq_len(n_repro), function(i) {
     tryCatch({
