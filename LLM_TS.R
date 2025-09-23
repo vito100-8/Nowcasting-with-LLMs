@@ -1,4 +1,5 @@
-#### Script : Requêtes LLM (Gemini) avec PDF en pièce-jointe  ####
+#### Script : Requêtes LLM (Gemini) avec TS en input ####
+#TS utilisée : Comptes trimestriels (base 2020) - Évolution du Produit intérieur brut total - Volume aux prix de l'année précédente chaînés - Série CVS-CJO  Identifiant 011794844
 
 rm(list = ls())
 
