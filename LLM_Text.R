@@ -31,7 +31,7 @@ load_dot_env('env')
 
 #Paramètres généraux
 english <- 1
-document_folder <- "docEMC_PDF"
+document_folder <- "docEMC_clean"
 
 #Paramètres fichiers
 ## liste fichiers 
@@ -70,7 +70,7 @@ print(date_prev)
 #Paramètres LLM
 
 temp_LLM <- 0.7
-n_repro <- 3
+n_repro <- 2
 
 # API Key (pour ellmer on utilise API_KEY_GEMINI)
 cle_API <- Sys.getenv("API_KEY_GEMINI")
@@ -114,32 +114,38 @@ path_from_docname <- function(doc_name, folder = document_folder) {
 ###################################
 
 if (english == 1) {
-  Sys.setlocale("LC_TIME", "English")
+  try(Sys.setlocale("LC_TIME", "English"), silent = TRUE)
+  #try(Sys.setlocale("LC_TIME", "en_US.UTF-8"), silent = TRUE)
   prompt_template_BDF <- function(d, q_trim, y_prev) {
     paste0(
-      "Forget previous instructions. You are François Villeroy de Galhau (Governor of the Banque de France). Today is ",
+      "Forget previous instructions and previous answers. You are François Villeroy de Galhau (Governor of the Banque de France), giving a speech on France economic outlook. Today is ",
       format(d, "%d %B %Y"), ". ",
-      "Using only information available on or before ", format(d, "%d %B %Y"), 
-      ", provide a numeric forecast (decimal percent, e.g. +0.3) for French real GDP growth for Q", q_trim, " ", y_prev, 
-      " and a confidence level (0-100). Output EXACTLY on one line :\n",
-      "<forecast> (<confidence>)"
+      "You will be provided with the latest Banque de France Monthly business survey (EMC). Using ONLY the information in that document and information available on or before ", 
+      format(d, "%d %B %Y"), ", provide a numeric forecast (decimal percent with sign, e.g. +0.3) for French real GDP growth for Q", q_trim, " ", y_prev, 
+      " and a confidence level (integer 0-100). Output EXACTLY in this format on a single line (no extra text): ",
+      "<forecast> (<confidence>). ",
+      "Example: +0.3 (80). ",
+      "Do NOT use any information published after ", format(d, "%d %B %Y"), "."
     )
   }
   
+
 } else {
-  Sys.setlocale("LC_TIME", "French")
+  try(Sys.setlocale("LC_TIME", "French"), silent = TRUE)
+  #try(Sys.setlocale("LC_TIME", "fr_FR.UTF-8"), silent = TRUE)
   prompt_template_BDF <- function(d, q_trim, y_prev) {
     paste0(
-      "Oubliez les instructions précédentes. Vous êtes François Villeroy de Galhau, Gouverneur de la Banque de France. Nous sommes le ",
+      "Oubliez les instructions et réponses précédentes. Vous êtes François Villeroy de Galhau, Gouverneur de la Banque de France, prononçant un discours sur les perspectives économiques de la France. Nous sommes le ",
       format(d, "%d %B %Y"), ". ",
-      "En utilisant uniquement les informations disponibles au plus tard le ", format(d, "%d %B %Y"),
-      ", fournissez une prévision numérique (pourcentage avec signe, ex. +0.3) pour la croissance du PIB réel français au T", q_trim, " ", y_prev,
-      " et un niveau de confiance (0-100). Renvoyez EXACTEMENT sur une seule ligne:\n",
-      "<prévision> (<confiance>)"
+      "Vous recevrez la dernière enquête mensuelle de conjoncture de la Banque de France (EMC). En utilisant UNIQUEMENT les informations contenues dans ce document et celles disponibles au plus tard le ", 
+      format(d, "%d %B %Y"), ", fournissez une prévision numérique (pourcentage décimal avec signe, ex. +0.3) pour la croissance du PIB réel français pour le trimestre ", q_trim, " ", y_prev,
+      " ainsi qu'un niveau de confiance (entier 0-100). Renvoyez EXACTEMENT sur une seule ligne (aucun texte supplémentaire) : ",
+      "<prévision> (<confiance>). ",
+      "Exemple : +0.3 (80). ",
+      "N'utilisez AUCUNE information publiée après le ", format(d, "%d %B %Y"), "."
     )
   }
 }
-
 
 ###################################
 # Boucle principale 
@@ -156,8 +162,8 @@ forecast_confidence_pattern <- "([+-]?\\d+\\.?\\d*)\\s*\\(\\s*(\\d{1,3})\\s*\\)"
 chat_gemini <- chat_google_gemini( system_prompt = "You will act as the economic agent you are told to be. Answer based on your knowledge in less than 200 words, and researches, do not invent facts." ,
                                    base_url = "https://generativelanguage.googleapis.com/v1beta/", 
                                    api_key = cle_API, 
-                                   model = "gemini-2.5-flash", 
-                                   params(temperature = 0.7, max_tokens = 1000)
+                                   model = "gemini-2.5-pro", 
+                                   params(temperature = 0.7, max_tokens = 5000)
                                    )
 
 # Creation de la list contenant les résultats
@@ -191,14 +197,12 @@ for (dt in dates) {
   year_prev <- if (mois_index == 1 && trimestre_index == 4) year_current - 1 else year_current
   prompt_text <- prompt_template_BDF(current_date, trimestre_index ,
                                      year_prev)
-
   
-  
+  chat_gemini$chat(uploaded_doc)
   # appel à Gemini en intégrant le document voulu
-  out_list <- lapply(seq_len(n_repro), function(i) {
+  out_list <- future_lapply(seq_len(n_repro), function(i) {
     tryCatch({
     resp <- chat_gemini$chat(uploaded_doc, prompt_text)
-    
     return(resp)}, error = function(e) {
       message("API error: ", conditionMessage(e))
       return(NA_character_)
@@ -207,7 +211,14 @@ for (dt in dates) {
   })
   
   # Parse les résultats
-  parsed_list <- lapply(out_list, function(txt) {
+  histoires <- sapply(out_list, function(x) {if (is.list(x) && !is.null(x$text)) {
+    return(x$text)
+  } else if (is.character(x)) {
+    return(x)
+  } else {
+    return(NA_character_)
+  }})
+  parsed_list <- lapply(histoires, function(txt) {
     if (is.null(txt) || length(txt) == 0) return(list(forecast = NA_real_, confidence = NA_integer_, raw = NA_character_))
     m <- regmatches(txt, regexec(forecast_confidence_pattern, txt))
     if (length(m[[1]]) >= 3) {
@@ -235,8 +246,8 @@ df_results_BDF <- do.call(rbind, results_BDF)
 
 
 # Enregistrement
-write.xlsx("resultats_BDF_Gemini_prompt.xlsx", file = nom_fichier_BDF, sheetName = 'prevision', rowNames = FALSE)
-print("Enregistré: resultats_BDF_Gemini_prompt.xlsx \n")
+write.xlsx("resultats_BDF_Gemini_text.xlsx", file = nom_fichier_BDF, sheetName = 'prevision', rowNames = FALSE)
+print("Enregistré: resultats_BDF_Gemini_text.xlsx \n")
 
 t2 <- Sys.time()
 print(diff(range(t1, t2)))
