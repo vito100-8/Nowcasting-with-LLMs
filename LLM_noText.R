@@ -291,11 +291,10 @@ for (dt in dates) {
     }
   })
   #  1 colonne par repro et par nombre de valeurs renvoyées (ici 3 valeurs)
-  df_bdf <- data.frame(Date = as.character(current_date), stringsAsFactors = FALSE)
+  df_bdf <- data.frame(Date = as.character(current_date), Prompt = q_BDF_text, stringsAsFactors = FALSE)
   for (i in seq_len(n_repro)) {
     df_bdf[[paste0("forecast_", i)]]  <- parsed_list[[i]]$forecast
     df_bdf[[paste0("confidence_", i)]] <- parsed_list[[i]]$confidence
-    df_bdf[[paste0("question_", i)]]   <- q_BDF_text
     df_bdf[[paste0("answer_", i)]]        <- parsed_list[[i]]$raw
     
   }
@@ -320,7 +319,7 @@ for (dt in dates) {
     }
   })
   
-  df_insee <- data.frame(Date = as.character(current_date),Prompt = prompt_text, stringsAsFactors = FALSE)
+  df_insee <- data.frame(Date = as.character(current_date),Prompt = q_INSEE_text, stringsAsFactors = FALSE)
   for (i in seq_len(n_repro)) {
     df_insee[[paste0("forecast_", i)]]  <- parsed_insee[[i]]$forecast
     df_insee[[paste0("confidence_", i)]] <- parsed_insee[[i]]$confidence
@@ -345,7 +344,7 @@ nom_fichier_INSEE <- paste0("resultats_INSEE_", LLM, "_prompt.xlsx")
 write.xlsx(df_results_INSEE, file = nom_fichier_INSEE, sheetName = 'prevision', rowNames = FALSE)
 cat("Les résultats pour la question INSEE ont été sauvegardés dans le fichier :", nom_fichier_INSEE, "\n")
 
-t2 <- Sys.time(0.5)
+t2 <- Sys.time()
 diff(range(t1,t2))
 
 
