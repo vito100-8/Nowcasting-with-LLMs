@@ -170,7 +170,7 @@ chat_gemini <- chat_google_gemini( system_prompt = "You will act as the economic
 results_BDF <- list()
 row_id <- 1 
 
-
+t1 <- Sys.time()
 for (dt in dates) {
   current_date <- as.Date(dt) 
   
@@ -207,7 +207,7 @@ for (dt in dates) {
       return(NA_character_)
     })
 
-  })
+  }, future.seed = TRUE)
   
   # Parse les résultats
   histoires <- sapply(out_list, function(x) {if (is.list(x) && !is.null(x$text)) {
@@ -241,8 +241,7 @@ for (dt in dates) {
 }
 
 # réunir les prévisions pour chaque date
-df_results_BDF <- do.call(rbind, results_BDF)
-
+df_results_text <- do.call(rbind, results_BDF)
 
 # Enregistrement
 write.xlsx(df_results_BDF, file = "resultats_BDF_Gemini_text.xlsx", sheetName = 'prevision', rowNames = FALSE)

@@ -74,11 +74,38 @@ errors_Text   <- compute_errors(res_Text, pib_reel)|>
 errors_ts     <- compute_errors(res_ts, pib_reel)|>
   select(dates, error_forecast_1: last_col())
 
-
-#Agréger en un tableau
+#Regrouper les erreurs de chaque modèle
 errors <- errors_ts |>
-  left_join(errors_Text, by = "dates") |>
-  left_join(errors_noText, by = "dates")
+  rename_with(~ paste0(.x, "_TS"), starts_with("error_forecast_"))  |>
+  left_join(
+    errors_Text |> rename_with(~ paste0(.x, "_Text"), starts_with("error_forecast_")),
+    by = "dates"
+  )  |>
+  left_join(
+    errors_noText |> rename_with(~ paste0(.x, "_noText"), starts_with("error_forecast_")),
+    by = "dates"
+  )
+
+# Calcul du RMSE par modèle
+RMSE <- errors |>
+  rowwise()  |>
+  mutate(
+    TS = sqrt(mean(c_across(starts_with("error_forecast_") & ends_with("_TS"))^2, na.rm = TRUE)),
+    Text = sqrt(mean(c_across(starts_with("error_forecast_") & ends_with("_Text"))^2, na.rm = TRUE)),
+    noText = sqrt(mean(c_across(starts_with("error_forecast_") & ends_with("_noText"))^2, na.rm = TRUE)),
+    .keep = "none"
+  ) |>
+  ungroup()
 
 
+#Calcul MAE
 
+MAE <- errors |>
+  rowwise()  |>
+  mutate(
+    TS = mean(abs(c_across(starts_with("error_forecast_") & ends_with("_TS"))), na.rm = TRUE),
+    Text = mean(abs(c_across(starts_with("error_forecast_") & ends_with("_Text"))), na.rm = TRUE),
+    noText = mean(abs(c_across(starts_with("error_forecast_") & ends_with("_noText"))), na.rm = TRUE),
+    .keep = "none"
+  ) |>
+  ungroup()
