@@ -209,7 +209,7 @@ for (dt in dates) {
 }
 
 # réunir les prévisions pour chaque date
-df_results_BDF <- do.call(rbind, results_BDF)
+df_results_TS <- do.call(rbind, results_BDF)
 
 
 # Enregistrement

@@ -37,7 +37,7 @@ load_dot_env('env')
 
 
 #langue utilisé
-english <- 0 # 1 si prompt en anglais
+english <- 1 # 1 si prompt en anglais
 
 # Définition des modèles et URLs
 LLM_configs <- list(
@@ -55,7 +55,7 @@ model_LLM <- LLM_configs[[LLM]]$model
 url_LLM <- LLM_configs[[LLM]]$url
 
 temp_LLM <- 0.7  # Niveau de créativité des réponses 0.3/0.7/1.5 (castro-Leibovici)
-n_repro <- 5  # Nombre de prévisions générées par date
+n_repro <- 2  # Nombre de prévisions générées par date
 
 # Charger la clé API
 
