@@ -4,6 +4,7 @@
 
 rm(list = ls())
 library(dplyr)
+library(readxl)
 
 #####################
 #INITIALISATION
@@ -75,7 +76,7 @@ final_data <- final_data |>
     PREVPRO_m2 = PREVPRO[month %% 3 == 2],
     PREVPRO_m3 = PREVPRO[month %% 3 == 0],
   ) |>
-  select(year, quarter, month, PIB, PIB_lag, EVLIV_m1:PREVPRO_m3)
+  select(year, quarter, month, PIB, PIB_lag, EVLIV_m1:PREVPRO_m3, dates)
   
 
 
@@ -145,15 +146,21 @@ results_forecasts <- pred_data |>
   select(year, quarter, month, PIB, PIB_lag, forecast_M1, forecast_M2, forecast_M3, forecast)
 
 # Dataset de toutes les observations + le forecast
+join_results <- results_forecasts |> 
+  select(year, quarter, month, forecast)
+
 total_dataset <- final_data |>
-  ungroup() |>
-  left_join(results_forecasts |>  select(year, quarter, month, forecast), 
+  left_join(join_results, 
             by = c("year", "quarter", "month"))
 
 
+#Dataset destiné à la comparaison des résultats
 
-
-
+df_ISMA <- results_forecasts |>
+  select(year, quarter, month, forecast) |>
+  inner_join(final_data, by = c("year", "quarter", "month")) |>
+  mutate(Date = dates) |>
+  select(Date, forecast, PIB)
 
 
 ############# Notes/Reflexions ####################
