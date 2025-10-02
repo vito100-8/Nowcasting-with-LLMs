@@ -22,13 +22,9 @@ plan(multisession, workers = 4)  # 4 optimal (jusqu'à 8 sur mon pc)
 # Répertoire de travail actif
 
 setwd(dirname(getActiveDocumentContext()$path))
-#setwd("C:/Users/victo/OneDrive/Documents/Stage_recherche_dauphine/code") #A MODIFIER ENSUITE
-#setwd("C:/Users/marie/OneDrive - Université Paris-Dauphine/LLM_VC/Code") #A MODIFIER ENSUITE
 
 here::i_am("LLM_noText.R")
 
-#load_dot_env('code/.env')
-#dotenv::load_dot_env(file = here("env"))
 load_dot_env('env')
 
 ###################################################
@@ -55,7 +51,7 @@ model_LLM <- LLM_configs[[LLM]]$model
 url_LLM <- LLM_configs[[LLM]]$url
 
 temp_LLM <- 0.7  # Niveau de créativité des réponses 0.3/0.7/1.5 (castro-Leibovici)
-n_repro <- 2  # Nombre de prévisions générées par date
+n_repro <- 5  # Nombre de prévisions générées par date
 
 # Charger la clé API
 
@@ -185,7 +181,7 @@ f_question <- get(paste0("poser_question_", LLM))
 # Initialisation des dates
 
 
-dates <- as.Date(c("2023-03-15", "2023-06-15")) #à changer manuellement
+dates <- as.Date(c("2012-01-03","2015-07-23", "2018-09-12","2023-03-15", "2023-06-15")) #à changer manuellement
 
 #####################
 # QUESTIONS A POSER
@@ -427,6 +423,20 @@ df_merged <- df_BDF_long |>
 
 cor(df_merged$BDF_forecast, df_merged$INSEE_forecast, method = "spearman") #corr =~ 0.64 obtenue
 
+
+#Test de moyenne entre BDF et INSEE
+t.test_BDF <- df_BDF |>
+  select(!Date)
+t.test_INSEE <- df_INSEE |>
+  select(!Date)
+
+t.test(t.test_BDF, t.test_INSEE, var.equal = FALSE) 
+# En supposant d'après les résultats précédent (mais à confirmer 
+# avec un plus gros échantillon) que la variances est différente entre les deux
+
+
+
+
 ############
 #GRAPHIQUES
 ###########
@@ -492,7 +502,7 @@ both_long_en_fr <- bind_rows(both_long, both_long_fr) |>
   select(Date, rep:language)
 
   
-#
+
 # Stats descriptives par date, source et langue
 
 stats_date_lang <- both_long_en_fr |>
@@ -529,6 +539,4 @@ print(diff_langue_moy)
 
 
 
-##A FAIRE :
-#Test de comparaison de moyenne INSEE vs BDF aussi (malgré dep temporelle), lancer toutes les dates et plus d'itérations
 
