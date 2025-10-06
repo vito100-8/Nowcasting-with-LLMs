@@ -4,21 +4,23 @@ rm(list = ls())
 
 # libs
 library(pdftools)
+library(qpdf)
 library(here)
 library(dotenv)
 library(stringr)
 library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(moments)
 library(openxlsx)
 library(rstudioapi)
 library(lubridate)
 library(readxl)
 library(future.apply)
-plan(multisession, workers = 4)
-
 library(jsonlite)
 library(mime)
-
 library(ellmer)
+plan(multisession, workers = 4)
 
 # Repertoire/ env
 setwd(dirname(getActiveDocumentContext()$path))
@@ -31,23 +33,42 @@ load_dot_env('env')
 
 #Paramètres généraux
 english <- 1
-document_folder <- "docEMC_clean"
+n_repro <- 2 
 
-#Paramètres fichiers
-## liste fichiers 
-files <- list.files(here(document_folder), pattern = "\\.pdf$", full.names = FALSE)
-write.csv(data.frame(file = files), here("List_files_short.csv"), row.names = FALSE)
+document_folder_BDF <- "docEMC_clean"
+document_folder_INSEE <- "INSEE_Scrap"
 
+# dates (exemple)
+dates <- as.Date(c("2023-03-01", "2023-06-01"))
+
+
+# API Key (pour ellmer on utilise API_KEY_GEMINI)
+cle_API <- Sys.getenv("API_KEY_GEMINI")
+
+#Initialisation LLM
+if (cle_API == "") stop("Clé API Gemini manquante. Ajoute API_KEY_GEMINI dans env/.Renviron")
+chat_gemini <- chat_google_gemini( system_prompt = "You will act as the economic agent you are told to be. Answer based on your knowledge in less than 200 words, and researches, do not invent facts." ,
+                                   base_url = "https://generativelanguage.googleapis.com/v1beta/", 
+                                   api_key = cle_API, 
+                                   model = "gemini-2.5-pro", 
+                                   params(temperature = 0.7, max_tokens = 5000)
+)
+
+
+
+
+
+#### CHARGER DATES EMC POUR LA BDF #######
 ## charger table de dates
-date_prev_temp <- read_excel("Synthese_fileEMC.xlsx")
-colnames(date_prev_temp)[1:4] <- c("fichier", "date_courte", "date_longue", "trimestre")
+date_prev_temp_BDF <- read_excel("Synthese_fileEMC.xlsx")
+colnames(date_prev_temp_BDF)[1:4] <- c("fichier", "date_courte", "date_longue", "trimestre")
 
-date_prev_temp <- date_prev_temp %>%
+date_prev_temp_BDF <- date_prev_temp_BDF %>%
   mutate(annee_prev = as.numeric(str_extract(fichier, "\\d{4}$")),
          mois_prev = as.numeric(str_extract(fichier, "(?<=EMC_)\\d{1,2}(?=_)"))) %>%
   filter(annee_prev >= 2015)
 
-date_prev_temp <- date_prev_temp %>%
+date_prev_temp_BDF <- date_prev_temp_BDF %>%
   mutate(
     annee_prev = as.numeric(str_extract(fichier, "\\d{4}$")),
     mois_prev  = as.numeric(str_extract(fichier, "(?<=EMC_)\\d{1,2}(?=_)")),
@@ -61,20 +82,14 @@ date_prev_temp <- date_prev_temp %>%
     )
   )
 
-date_prev <- date_prev_temp %>%
+date_prev_BDF<- date_prev_temp_BDF %>%
   select(fichier, trimestre, date_finale_d) %>%
   filter(!is.na(date_finale_d))
 
-print(date_prev)
+print(date_prev_BDF)
 
-#Paramètres LLM
 
-temp_LLM <- 0.7
-n_repro <- 2
 
-# API Key (pour ellmer on utilise API_KEY_GEMINI)
-cle_API <- Sys.getenv("API_KEY_GEMINI")
-if (cle_API == "") stop("Clé API Gemini manquante. Ajoute API_KEY_GEMINI dans env/.Renviron")
 
 
 ###################################
@@ -98,7 +113,7 @@ get_last_doc <- function(date_prev_df, target_date) {
 }
 
 # path_from_docname : renvoie chemin complet vers le PDF local 
-path_from_docname <- function(doc_name, folder = document_folder) {
+path_from_docname <- function(doc_name, folder) {
   if (is.null(doc_name)) return(NULL)
   if (!grepl("\\.pdf$", doc_name, ignore.case = TRUE)) doc_name <- paste0(doc_name, ".pdf")
   path <- file.path(folder, doc_name)
@@ -108,6 +123,73 @@ path_from_docname <- function(doc_name, folder = document_folder) {
   }
   return(normalizePath(path, winslash = "/", mustWork = TRUE))
 }
+
+
+
+
+# Obtenir depuis le dossier les 3 documents : SER, BAT, et EMI en les cherchant par date
+get_last_insee_docs_by_type <- function(target_date, doc_type, folder_to_search) {
+  
+  target_date <- as.Date(target_date)
+  
+  # Format des fichiers : XXX_MM_YYYY, on parse par mois et année
+  pattern <- paste0("^", doc_type, "_(\\d{1,2})_(\\d{4})\\.pdf$")
+  all_files <- list.files(folder_to_search, pattern = pattern, full.names = FALSE) 
+  
+  if (length(all_files) == 0) {
+    warning(paste("Aucun fichier", doc_type, "trouvé dans", folder_to_search))
+    return(NULL)
+  }
+  
+  # parse par date 
+  file_dates_df <- tibble(
+    filename = all_files,
+    month = as.integer(str_extract(all_files, "(?<=_)\\d{1,2}(?=_)")),
+    year = as.integer(str_extract(all_files, "(?<=_\\d{1,2}_)\\d{4}(?=\\.pdf$)"))
+  ) |>
+    mutate(
+      doc_date = ymd(paste(year, month, "01", sep = "-")) 
+    ) 
+  
+  # Filtrer les documents disponibles avant la target_date
+  doc_possible <- file_dates_df |>
+    filter(doc_date < target_date)
+  
+  if (nrow(doc_possible) == 0) {
+    warning(paste("Aucun document de type", doc_type, "disponible strictement avant", target_date))
+    return(NULL)
+  }
+  
+  # Prendre LE document le plus récent
+  most_recent_doc_filename <- doc_possible |>
+    arrange(desc(doc_date)) |>
+    slice(1) |> 
+    pull(filename)
+  
+  # Retourner le chemin complet du document le plus récent
+  full_path <- path_from_docname(most_recent_doc_filename, folder = folder_to_search) 
+  return(full_path) 
+}
+
+
+#Concaténer les 3 enquêtes de l'INSEE
+merge_pdfs <- function(files, output_path) {
+  pdf_combine(input = files, output = output_path)
+  return(output_path)
+} 
+
+#Dirigeant de l'INSEE selon la date
+INSEE_current_boss <- function(y_p){
+  
+    if(y_p < 2012){
+      return("Jean-Philippe Cotis")
+    }else if (y_p > 2012 && y_p < 2025){
+      return("Jean-Luc Tavernier")
+    }else{
+      return("Fabrice Lenglart")
+    }
+  }
+
 
 ###################################
 # Prompts
@@ -122,6 +204,19 @@ if (english == 1) {
       format(d, "%d %B %Y"), ". ",
       "You will be provided with the latest Banque de France Monthly business survey (EMC). Using ONLY the information in that document and information available on or before ", 
       format(d, "%d %B %Y"), ", provide a numeric forecast (decimal percent with sign, e.g. +0.3) for French real GDP growth for Q", q_trim, " ", y_prev, 
+      " and a confidence level (integer 0-100). Output EXACTLY in this format on a single line (no extra text): ",
+      "<forecast> (<confidence>). ",
+      "Example: +0.3 (80). ",
+      "Do NOT use any information published after ", format(d, "%d %B %Y"), "."
+    )
+  }
+  
+  prompt_template_INSEE <- function(d, q_trim, y_prev) {
+    paste0(
+      "Forget previous instructions and previous answers. You are ", INSEE_current_boss(y_prev), " director General at INSEE (National Institute of Statistics and Economic Studies), analyzing the French economy. Today is ",
+      format(d, "%d %B %Y"), ". ",
+      "You will be provided with the latest INSEE monthly business tendency surveys (Industry, Services and Construction) for France. Using ONLY the information in these documents and information available on or before ", 
+      format(d, "%d %B %Y"), ", provide a numeric forecast (decimal percent with sign, e.g. +0.3) for French real GDP growth for Q", q_trim, " ", y_prev,
       " and a confidence level (integer 0-100). Output EXACTLY in this format on a single line (no extra text): ",
       "<forecast> (<confidence>). ",
       "Example: +0.3 (80). ",
@@ -145,38 +240,40 @@ if (english == 1) {
       "N'utilisez AUCUNE information publiée après le ", format(d, "%d %B %Y"), "."
     )
   }
+  
+  prompt_template_INSEE <- function(d, q_trim, y_prev) {
+    paste0(
+      "Oubliez les instructions et réponses précédentes. Vous êtes ", INSEE_current_boss(y_prev),  "Directeur Général de l'INSEE, analysant l'économie française. Nous sommes le ",
+      format(d, "%d %B %Y"), ". ",
+      "Vous recevrez les dernières enquêtes de conjoncture mensuelles de l'INSEE (EMI, SER, BAT) pour la France. En utilisant UNIQUEMENT les informations contenues dans ces documents et celles disponibles au plus tard le ", 
+      format(d, "%d %B %Y"), ", fournissez une prévision numérique (pourcentage décimal avec signe, ex. +0.3) pour la croissance du PIB réel français pour le trimestre ", q_trim, " ", y_prev,
+      " ainsi qu'un niveau de confiance (entier 0-100). Renvoyez EXACTEMENT sur une seule ligne (aucun texte supplémentaire) : ",
+      "<prévision> (<confiance>). ",
+      "Exemple : +0.3 (80). ",
+      "N'utilisez AUCUNE information publiée après le ", format(d, "%d %B %Y"), "."
+    )
+  }
 }
 
 ###################################
-# Boucle principale 
+# Boucle principale BDF
 ###################################
 
-# dates (exemple)
-dates <- as.Date(c("2023-03-15", "2023-06-15"))
 
 # Forecast regex pattern qui sera appelé dans la boucle pour parse
 forecast_confidence_pattern <- "([+-]?\\d+\\.?\\d*)\\s*\\(\\s*(\\d{1,3})\\s*\\)"
 
-
-#Initialisation LLM
-chat_gemini <- chat_google_gemini( system_prompt = "You will act as the economic agent you are told to be. Answer based on your knowledge in less than 200 words, and researches, do not invent facts." ,
-                                   base_url = "https://generativelanguage.googleapis.com/v1beta/", 
-                                   api_key = cle_API, 
-                                   model = "gemini-2.5-pro", 
-                                   params(temperature = 0.7, max_tokens = 5000)
-                                   )
-
 # Creation de la list contenant les résultats
 results_BDF <- list()
-row_id <- 1 
+row_id_BDF <- 1 
 
 t1 <- Sys.time()
 for (dt in dates) {
   current_date <- as.Date(dt) 
   
   # Trouver le bon pdf et son path
-  docname <- get_last_doc(date_prev, current_date)
-  pdf_path <- path_from_docname(docname, folder = document_folder)
+  docname <- get_last_doc(date_prev_BDF, current_date)
+  pdf_path <- path_from_docname(docname, folder = document_folder_BDF)
   
   if (is.null(pdf_path)) {
     warning("No PDF found for date ", current_date, " — skipping.")
@@ -235,17 +332,230 @@ for (dt in dates) {
     df_bdf[[paste0("answer_", i)]] <- parsed_list[[i]]$raw
   }
   
-  results_BDF[[row_id]] <- df_bdf
-  row_id <- row_id + 1
+  results_BDF[[row_id_BDF]] <- df_bdf
+  row_id_BDF<- row_id_BDF+ 1
   Sys.sleep(0.5)
 }
 
 # réunir les prévisions pour chaque date
-df_results_text <- do.call(rbind, results_BDF)
+df_results_text_BDF <- do.call(rbind, results_BDF)
 
 # Enregistrement
-write.xlsx(df_results_BDF, file = "resultats_BDF_Gemini_text.xlsx", sheetName = 'prevision', rowNames = FALSE)
+write.xlsx(df_results_text_BDF, file = "resultats_BDF_Gemini_text.xlsx", sheetName = 'prevision', rowNames = FALSE)
 print("Enregistré: resultats_BDF_Gemini_text.xlsx \n")
 
 t2 <- Sys.time()
 print(diff(range(t1, t2)))
+
+
+#######################
+#BOUCLE PRINCIPALE INSEE
+########################
+
+# Forecast regex pattern qui sera appelé dans la boucle pour parse
+forecast_confidence_pattern <- "([+-]?\\d+\\.?\\d*)\\s*\\(\\s*(\\d{1,3})\\s*\\)"
+
+# Creation de la list contenant les résultats
+results_INSEE <- list()
+row_id_INSEE <- 1 
+
+t1 <- Sys.time()
+
+for (dt in dates) {
+  current_date <- as.Date(dt) 
+  
+  # Chargement du pdf concaténé souhaité
+  uploaded_doc <- google_upload(
+    INSEE_path,
+    base_url = "https://generativelanguage.googleapis.com/",
+    api_key = cle_API
+  )
+  
+  # Initialisation des dates
+  current_date <- as.Date(dt)
+  mois_index <- as.integer(format(current_date, "%m"))
+  year_current <- as.integer(format(current_date, "%Y"))
+  trimestre_index <- if (mois_index %in% c(1,11,12)) 4 else if (mois_index %in% 2:4) 1 else if (mois_index %in% 5:7) 2 else 3
+  year_prev <- if (mois_index == 1 && trimestre_index == 4) year_current - 1 else year_current
+  prompt_text <- prompt_template_INSEE(current_date, trimestre_index ,
+                                     year_prev)
+  
+  # appel à Gemini en intégrant le document voulu
+  out_list <- future_lapply(seq_len(n_repro), function(i) {
+    tryCatch({
+      resp <- chat_gemini$chat(uploaded_doc, prompt_text)
+      return(resp)}, error = function(e) {
+        message("API error: ", conditionMessage(e))
+        return(NA_character_)
+      })
+    
+  }, future.seed = TRUE)
+  
+  # Parse les résultats
+  histoires <- sapply(out_list, function(x) {if (is.list(x) && !is.null(x$text)) {
+    return(x$text)
+  } else if (is.character(x)) {
+    return(x)
+  } else {
+    return(NA_character_)
+  }})
+  parsed_list <- lapply(histoires, function(txt) {
+    if (is.null(txt) || length(txt) == 0) return(list(forecast = NA_real_, confidence = NA_integer_, raw = NA_character_))
+    m <- regmatches(txt, regexec(forecast_confidence_pattern, txt))
+    if (length(m[[1]]) >= 3) {
+      list(forecast = as.numeric(m[[1]][2]), confidence = as.integer(m[[1]][3]), raw = txt)
+    } else {
+      list(forecast = NA_real_, confidence = NA_integer_, raw = txt)
+    }
+  })
+  
+  #Df des résultats
+  df_insee <- data.frame(Date = as.character(current_date), Prompt = prompt_text, stringsAsFactors = FALSE)
+  for (i in seq_len(n_repro)) {
+    df_insee[[paste0("forecast_", i)]]  <- parsed_list[[i]]$forecast
+    df_insee[[paste0("confidence_", i)]] <- parsed_list[[i]]$confidence
+    df_insee[[paste0("answer_", i)]] <- parsed_list[[i]]$raw
+  }
+  
+  results_INSEE[[row_id_INSEE]] <- df_insee
+  row_id_INSEE <- row_id_INSEE + 1
+  Sys.sleep(0.5)
+}
+
+# réunir les prévisions pour chaque date
+df_results_text_INSEE <- do.call(rbind, results_INSEE)
+
+
+# Enregistrement
+write.xlsx(df_results_text_INSEE, file = "resultats_INSEE_Gemini_text.xlsx", sheetName = 'prevision', rowNames = FALSE)
+print("Enregistré: resultats_INSEE_Gemini_text.xlsx \n")
+
+t2 <- Sys.time()
+print(diff(range(t1, t2)))
+
+
+##################
+#Stats Descriptives
+###################
+
+#Passage en long pour stat des plus simple à rédiger
+
+to_long <- function(df, source_name) { 
+  df |>
+    pivot_longer(
+      cols = matches("^(forecast|confidence)_\\d+$"),
+      names_to = c(".value", "rep"),
+      names_pattern = "(.*)_(\\d+)$"
+    ) |>
+    mutate(
+      rep = as.integer(rep),
+      forecast = as.numeric(forecast),
+      confidence = as.integer(confidence),
+      source = source_name
+    )
+}
+
+bdf_text_long   <- to_long(df_results_text_BDF, "BDF")
+insee_text_long <- to_long(df_results_text_INSEE, "INSEE")
+
+both_text_long <- bind_rows(bdf_text_long, insee_text_long)
+
+
+# Stats descriptives simples
+stats_des_text <- both_text_long |>
+  group_by(Date, source) |>
+  summarise(
+    Moyenne = mean(forecast, na.rm = TRUE),
+    Médiane = median(forecast, na.rm = TRUE),
+    Variance = var(forecast, na.rm = TRUE),
+    EcartType = sd(forecast, na.rm = TRUE),
+    Skewness = skewness(forecast, na.rm = TRUE),
+    Kurtosis = kurtosis(forecast, na.rm = TRUE),
+    Moyenne_Confiance = mean(confidence, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+
+#Arrangement des df afin de pouvoir mieux les exploiter
+df_BDF_text   <- df_results_text_BDF |> select(Date, starts_with("forecast_"))
+df_INSEE_text  <- df_results_text_INSEE |> select(Date, starts_with("forecast_"))
+
+colnames(df_BDF_text)[-1]   <- paste0("BDF_",   seq_along(colnames(df_BDF_text)[-1]))
+colnames(df_INSEE_text)[-1] <- paste0("INSEE_", seq_along(colnames(df_INSEE_text)[-1]))
+
+df_BDF_text <- df_BDF_text |> 
+  select(!Date)
+
+df_INSEE_text <- df_INSEE_text |> 
+  select(!Date)
+
+#Corrélation entre les prévisions
+BDF_cor   <- rowMeans(df_BDF, na.rm = TRUE)
+INSEE_cor <- rowMeans(df_INSEE, na.rm = TRUE)
+
+
+correlation <- cor(BDF_cor, INSEE_cor, method = "spearman") ## à revoir/vérifier avec plus d'observations parce que affiche 1
+#normalement ok :  moyennes à chaque date de forecast (testées avec 4 dates, output correlation =~ 0.889)
+
+
+
+#Test de moyenne entre BDF et INSEE
+
+t.test(df_BDF_text, df_INSEE_text, var.equal = FALSE) 
+# En supposant d'après les résultats précédent (mais à confirmer 
+# avec un plus gros échantillon) que la variances est différente entre les deux
+
+
+
+
+############
+#GRAPHIQUES
+###########
+
+#Distribution  des prev selon BDF/INSEE pour chaque date : violin (((à voir lequel plus pertinent)))
+ggplot(both_text_long, aes(x = source, y = as.numeric(forecast), fill = source)) +
+  geom_violin(alpha = 0.6, trim = FALSE) +
+  facet_wrap(~ Date, scales = "free_y") +
+  labs(
+    title = "Distribution des prévisions par organisme",
+    y = "Prévision",
+    x = "Organisme"
+  ) +
+  theme_minimal()
+
+# Boxplot
+ggplot(both_text_long, aes(x = source, y = as.numeric(forecast), fill = source)) +
+  geom_boxplot(alpha = 0.7, outlier.shape = 16, outlier.size = 1.5) +
+  facet_wrap(~ Date, scales = "free_y") +
+  labs(
+    title = "Distribution des prévisions par organisme (Boxplot)",
+    y = "Prévision",
+    x = "Organisme"
+  ) +
+  theme_minimal()
+
+#Densité
+ggplot(both_text_long, aes(x = as.numeric(forecast), fill = source, color = source)) +
+  geom_density(alpha = 0.4) +
+  facet_wrap(~ Date, scales = "free") +
+  labs(
+    title = "Distribution des prévisions BDF vs INSEE",
+    x = "Prévision",
+    y = "Densité"
+  ) +
+  theme_minimal()
+
+
+
+
+
+
+
+
+############### A FAIRE #################
+
+#Essayer donner csv en input (xls_write) : recréer un fichier excel/csv  à chaque itération car nouvelle date
+
+#Donner : enquete bdf (la donner à BDF), insee (la donner à INSEE) + PIB ?
+#Ajouter de manière récursive les erreurs du LLM dans ses forecast en t-1 ?
+
