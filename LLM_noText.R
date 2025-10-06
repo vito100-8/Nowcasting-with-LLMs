@@ -58,6 +58,8 @@ n_repro <- 5  # Nombre de prévisions générées par date
 cle_API <- Sys.getenv(paste0("API_KEY_", LLM))
 if (cle_API == "") stop("Clé API manquante pour ", LLM)
 
+
+
 #############################
 #FONCTIONS REQUETE DU CHATBOT
 ############################
