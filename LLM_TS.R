@@ -3,29 +3,10 @@
 
 rm(list = ls())
 
-# libs
-library(pdftools)
-library(here)
-library(dotenv)
-library(stringr)
-library(dplyr)
-library(openxlsx)
-library(rstudioapi)
-library(lubridate)
-library(readxl)
-library(future.apply)
-plan(multisession, workers = 4)
-library(tidyr)
-library(jsonlite)
-library(mime)
-
-library(ellmer)
-
 # Repertoire/ env
 setwd(dirname(getActiveDocumentContext()$path))
 here::i_am("LLM_TS.R")
 load_dot_env('env')
-
 
 
 ###################################
