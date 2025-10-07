@@ -19,7 +19,6 @@ res_ts<- df_results_TS
 
 # Prendre le trimestre observé
 
-
 pib_reel <- pib_reel |>
   mutate(Date    = as.Date(dates),             
     Year = year(Date),               
