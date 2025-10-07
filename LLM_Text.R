@@ -2,26 +2,6 @@
 
 rm(list = ls())
 
-# libs
-library(pdftools)
-library(qpdf)
-library(here)
-library(dotenv)
-library(stringr)
-library(dplyr)
-library(ggplot2)
-library(tidyr)
-library(moments)
-library(openxlsx)
-library(rstudioapi)
-library(lubridate)
-library(readxl)
-library(future.apply)
-library(jsonlite)
-library(mime)
-library(ellmer)
-plan(multisession, workers = 4)
-
 # Repertoire/ env
 setwd(dirname(getActiveDocumentContext()$path))
 here::i_am("LLM_Text.R")
@@ -363,6 +343,16 @@ t1 <- Sys.time()
 
 for (dt in dates) {
   current_date <- as.Date(dt) 
+  
+  # Trouver les bon pdf, le chemin d'accès et les concaténer
+  emi_path <- get_last_insee_docs_by_type(current_date,"EMI",  document_folder_INSEE)
+  ser_path <- get_last_insee_docs_by_type(current_date, "SER",document_folder_INSEE)
+  bat_path <- get_last_insee_docs_by_type(current_date, "BAT",document_folder_INSEE)
+  
+  ##concaténation des documents dans le chemin d'accès spécifié
+  all_insee_docs_to_combine <- c(emi_path, ser_path, bat_path)
+  combined_pdf_path <- file.path( "C:/Users/LEDA/Documents/Nowcasting-with-LLMs/INSEE_files_used/", paste0("combined_INSEE_", format(current_date, "%Y%m%d"), ".pdf"))
+  INSEE_path <- merge_pdfs(all_insee_docs_to_combine, combined_pdf_path)
   
   # Chargement du pdf concaténé souhaité
   uploaded_doc <- google_upload(

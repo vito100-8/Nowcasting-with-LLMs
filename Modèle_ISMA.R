@@ -2,13 +2,8 @@
 
 #Forme : données de 1990 à fin 2024, régression linéaire de 1990 à 2010 puis nowcasting du PIB de 2010 à fin 2024
 
-# ENVOYER POUR VERIF
 
 rm(list = ls())
-library(dplyr)
-library(readxl)
-library(lubridate)
-library(tidyr)
 
 ######################
 #PARAMETRES UTILISATEUR
@@ -54,7 +49,7 @@ forecast_results <- tibble(
 
 # Boucle de prévision : itérer jusqu'à la fin du dataset depuis la date de training choisie
 for (i in first_forecast_row:nrow(df_PIB_ENQ)) {
-  
+ 
   # Date du forecast
   current_forecast_date <- df_PIB_ENQ$dates[i]
   
@@ -95,7 +90,31 @@ df_ISMA <- forecast_results |>
   mutate(PIB = PIB_PR) 
 
 
+#########################
+# Analyse des résultats
+#########################
+
+qqnorm(na.omit(df_ISMA$residuals_M1), main = "QQ-Plot des Résidus M1")
+qqline(na.omit(df_ISMA$residuals_M1))
+
+
+
+
+
+
+
+
+###################################
+
+#jpg pour envoyer résultats de régression
+jpeg("reg_M3_summary.jpg", width = 800, height = 600, quality = 100)
+plot.new()
+text(0, 1, paste(capture.output(summary(reg_M1)), collapse = "\n"), adj = c(0,1), cex = 0.8)
+dev.off()
+
 
 #covid quelle méthode ? : dummy ou suppression observation
 #MAE et RMSE direct ? Ou juste erreur directe
+
+
 

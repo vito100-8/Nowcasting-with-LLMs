@@ -1,9 +1,5 @@
 ########## COMPARAISON DES RESULTATS ENTRE LES DIFFERENTS MODELES ####################
 
-library(forecast)
-library(dplyr)
-library(readxl)
-
 ############################
 # Telechargement du PIB réel
 ###########################
