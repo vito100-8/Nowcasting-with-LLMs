@@ -106,7 +106,6 @@ path_from_docname <- function(doc_name, folder) {
 
 
 
-
 # Obtenir depuis le dossier les 3 documents : SER, BAT, et EMI en les cherchant par date
 get_last_insee_docs_by_type <- function(target_date, doc_type, folder_to_search) {
   
@@ -134,11 +133,6 @@ get_last_insee_docs_by_type <- function(target_date, doc_type, folder_to_search)
   # Filtrer les documents disponibles avant la target_date
   doc_possible <- file_dates_df |>
     filter(doc_date < target_date)
-  
-  if (nrow(doc_possible) == 0) {
-    warning(paste("Aucun document de type", doc_type, "disponible strictement avant", target_date))
-    return(NULL)
-  }
   
   # Prendre LE document le plus récent
   most_recent_doc_filename <- doc_possible |>
@@ -351,7 +345,7 @@ for (dt in dates) {
   
   ##concaténation des documents dans le chemin d'accès spécifié
   all_insee_docs_to_combine <- c(emi_path, ser_path, bat_path)
-  combined_pdf_path <- file.path( "C:/Users/LEDA/Documents/Nowcasting-with-LLMs/INSEE_files_used/", paste0("combined_INSEE_", format(current_date, "%Y%m%d"), ".pdf"))
+  combined_pdf_path <- file.path( "./INSEE_files_used/", paste0("combined_INSEE_", format(current_date, "%Y%m%d"), ".pdf"))
   INSEE_path <- merge_pdfs(all_insee_docs_to_combine, combined_pdf_path)
   
   # Chargement du pdf concaténé souhaité
