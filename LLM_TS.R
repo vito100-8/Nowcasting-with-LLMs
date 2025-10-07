@@ -3,28 +3,11 @@
 
 rm(list = ls())
 
-# libs
-library(pdftools)
-library(here)
-library(dotenv)
-library(stringr)
-library(dplyr)
-library(openxlsx)
-library(rstudioapi)
-library(lubridate)
-library(readxl)
-library(future.apply)
-plan(multisession, workers = 4)
-library(tidyr)
-library(jsonlite)
-library(mime)
-
-library(ellmer)
-
 # Repertoire/ env
 setwd(dirname(getActiveDocumentContext()$path))
 here::i_am("LLM_TS.R")
 load_dot_env('env')
+
 
 ###################################
 # Paramètres initiaux
@@ -218,3 +201,8 @@ print("Enregistré: resultats_BDF_Gemini_ts.xlsx \n")
 
 t2 <- Sys.time()
 print(diff(range(t1, t2)))
+
+############### A FAIRE ####################
+
+#DONNER UN FICHIER EXCEL QUI SARRETE AVANT LA DATE DE PREVISION : pas que le LLM aie accès aux dernières données (idem que reco pour text avec xls bright)
+#Faire après LLM TEXT si pertinent

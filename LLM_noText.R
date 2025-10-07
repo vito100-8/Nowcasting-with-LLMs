@@ -2,22 +2,6 @@
 # Prévision récursive de croissance du PIB avec LLM sans document
 
 rm(list=ls())
-library(pdftools)
-library(httr)
-library(jsonlite)
-library(here)
-library(dotenv)
-library(stringr)
-library(dplyr)
-library(openxlsx)
-library (rstudioapi)
-library(lubridate)
-library(tidyr)
-library(dplyr)
-library(moments) 
-library(ggplot2)
-library(future.apply)  # pour paralléliser les appels
-plan(multisession, workers = 4)  # 4 optimal (jusqu'à 8 sur mon pc)
 
 # Répertoire de travail actif
 
@@ -57,6 +41,8 @@ n_repro <- 5  # Nombre de prévisions générées par date
 
 cle_API <- Sys.getenv(paste0("API_KEY_", LLM))
 if (cle_API == "") stop("Clé API manquante pour ", LLM)
+
+
 
 #############################
 #FONCTIONS REQUETE DU CHATBOT
