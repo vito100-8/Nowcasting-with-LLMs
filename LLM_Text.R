@@ -1,11 +1,11 @@
 #### Script : Requêtes LLM (Gemini) avec PDF en pièce-jointe  ####
 
-rm(list = ls())
+rm(list = ls()) 
 
 # Repertoire/ env
 setwd(dirname(getActiveDocumentContext()$path))
 here::i_am("LLM_Text.R")
-load_dot_env('env')
+load_dot_env('.env')   # modif MB => j'ai  rajouté .
 
 ###################################
 # Paramètres initiaux
@@ -13,13 +13,14 @@ load_dot_env('env')
 
 #Paramètres généraux
 english <- 1
-n_repro <- 2 
+temp_LLM <- 0.7
+n_repro <- 2
 
 document_folder_BDF <- "docEMC_clean"
 document_folder_INSEE <- "INSEE_Scrap"
 
 # dates (exemple)
-dates <- as.Date(c("2023-03-01", "2023-06-01"))
+dates <- as.Date(c("2023-03-01", "2023-06-01")) # format aaaa-mm-jj
 
 
 # API Key (pour ellmer on utilise API_KEY_GEMINI)
@@ -31,10 +32,8 @@ chat_gemini <- chat_google_gemini( system_prompt = "You will act as the economic
                                    base_url = "https://generativelanguage.googleapis.com/v1beta/", 
                                    api_key = cle_API, 
                                    model = "gemini-2.5-pro", 
-                                   params(temperature = 0.7, max_tokens = 5000)
+                                   params(temperature = temp_LLM, max_tokens = 5000)
 )
-
-
 
 
 
@@ -44,14 +43,17 @@ date_prev_temp_BDF <- read_excel("Synthese_fileEMC.xlsx")
 colnames(date_prev_temp_BDF)[1:4] <- c("fichier", "date_courte", "date_longue", "trimestre")
 
 date_prev_temp_BDF <- date_prev_temp_BDF %>%
-  mutate(annee_prev = as.numeric(str_extract(fichier, "\\d{4}$")),
-         mois_prev = as.numeric(str_extract(fichier, "(?<=EMC_)\\d{1,2}(?=_)"))) %>%
+  mutate(
+    annee_prev = as.numeric(str_extract(fichier, "^\\d{4}")),        # 4 chiffres au début
+    mois_prev  = as.numeric(str_extract(fichier, "(?<=\\d{4}_)\\d{1,2}"))  # chiffres après l'année et le _
+  ) %>%
   filter(annee_prev >= 2015)
+
 
 date_prev_temp_BDF <- date_prev_temp_BDF %>%
   mutate(
-    annee_prev = as.numeric(str_extract(fichier, "\\d{4}$")),
-    mois_prev  = as.numeric(str_extract(fichier, "(?<=EMC_)\\d{1,2}(?=_)")),
+    annee_prev = as.numeric(str_extract(fichier, "^\\d{4}")),  # 4 chiffres au début
+    mois_prev  = as.numeric(str_extract(fichier, "(?<=EMC_)\\d{1,2}(?=_)")), # chiffres après l'année et le _
     date_courte_d = as.Date(as.character(date_courte)),
     date_longue_d = as.Date(as.numeric((date_longue)), origin = "1899-12-30")
   ) %>%
@@ -65,6 +67,8 @@ date_prev_temp_BDF <- date_prev_temp_BDF %>%
 date_prev_BDF<- date_prev_temp_BDF %>%
   select(fichier, trimestre, date_finale_d) %>%
   filter(!is.na(date_finale_d))
+  # on supprime les lignes où la variable date_finale_d est manquante (NA) 
+  # car pas de publication de l'enquête (pandémie)
 
 print(date_prev_BDF)
 
@@ -107,12 +111,13 @@ path_from_docname <- function(doc_name, folder) {
 
 
 # Obtenir depuis le dossier les 3 documents : SER, BAT, et EMI en les cherchant par date
-get_last_insee_docs_by_type <- function(target_date, doc_type, folder_to_search) {
+"get_last_insee_docs_by_type <- function(target_date, doc_type, folder_to_search) {
   
   target_date <- as.Date(target_date)
   
   # Format des fichiers : XXX_MM_YYYY, on parse par mois et année
-  pattern <- paste0("^", doc_type, "_(\\d{1,2})_(\\d{4})\\.pdf$")
+  pattern <- paste0("^(\\d{4})_(\\d{2})_", doc_type, "\\.pdf$")
+  #pattern <- paste0("^", doc_type, "_(\\d{1,2})_(\\d{4})\\.pdf$")
   all_files <- list.files(folder_to_search, pattern = pattern, full.names = FALSE) 
   
   if (length(all_files) == 0) {
@@ -121,6 +126,9 @@ get_last_insee_docs_by_type <- function(target_date, doc_type, folder_to_search)
   }
   
   # parse par date 
+  print(all_files)
+  cat("Nombre de fichiers trouvés :", length(all_files), "\n")
+  
   file_dates_df <- tibble(
     filename = all_files,
     month = as.integer(str_extract(all_files, "(?<=_)\\d{1,2}(?=_)")),
@@ -135,6 +143,9 @@ get_last_insee_docs_by_type <- function(target_date, doc_type, folder_to_search)
     filter(doc_date < target_date)
   
   # Prendre LE document le plus récent
+  print(file_dates_df)
+  print(doc_possible)
+  
   most_recent_doc_filename <- doc_possible |>
     arrange(desc(doc_date)) |>
     slice(1) |> 
@@ -144,6 +155,45 @@ get_last_insee_docs_by_type <- function(target_date, doc_type, folder_to_search)
   full_path <- path_from_docname(most_recent_doc_filename, folder = folder_to_search) 
   return(full_path) 
 }
+"
+get_last_insee_docs_by_type <- function(target_date, doc_type, folder_to_search) {
+  
+  target_date <- as.Date(target_date)
+  
+  # Format : AAAA_MM_TYPE.pdf
+  pattern <- paste0("^(\\d{4})_(\\d{2})_", doc_type, "\\.pdf$")
+  all_files <- list.files(folder_to_search, pattern = pattern, full.names = FALSE)
+  
+  if (length(all_files) == 0) {
+    warning(paste("Aucun fichier", doc_type, "trouvé dans", folder_to_search))
+    return(NULL)
+  }
+  
+  # Extraction stricte : 4 chiffres + underscore + 2 chiffres
+  file_dates_df <- tibble(
+    filename = all_files,
+    year  = as.integer(str_extract(all_files, "^\\d{4}")),
+    month = as.integer(str_extract(all_files, "(?<=\\d{4}_)\\d{2}"))
+  ) |>
+    mutate(doc_date = ymd(paste(year, month, "01", sep = "-")))
+  
+  doc_possible <- file_dates_df |>
+    filter(doc_date < target_date)
+  
+  if (nrow(doc_possible) == 0) {
+    warning("Aucun document antérieur à la date cible")
+    return(NULL)
+  }
+  
+  most_recent_doc_filename <- doc_possible |>
+    arrange(desc(doc_date)) |>
+    slice(1) |> 
+    pull(filename)
+  
+  full_path <- path_from_docname(most_recent_doc_filename, folder = folder_to_search) 
+  return(full_path)
+}
+
 
 
 #Concaténer les 3 enquêtes de l'INSEE
@@ -155,14 +205,27 @@ merge_pdfs <- function(files, output_path) {
 #Dirigeant de l'INSEE selon la date
 INSEE_current_boss <- function(y_p){
   
-    if(y_p < 2012){
+    if(y_p <= as.Date("2012-02-21")){
       return("Jean-Philippe Cotis")
-    }else if (y_p > 2012 && y_p < 2025){
+    }else if (y_p <= as.Date("2025-05-31")){
       return("Jean-Luc Tavernier")
     }else{
       return("Fabrice Lenglart")
     }
   }
+
+
+#Dirigeant de la BDF selon la date
+BDF_current_boss <- function(y_p){
+  
+  if(y_p <= as.Date("2002-12-31")){
+    return("Jean-Claude Trichet")
+  }else if (y_p <= as.Date("2015-10-31")){
+    return("Christian Noyer")
+  }else{
+    return("François Villeroy de Galhau")
+  }
+}
 
 
 ###################################
@@ -174,9 +237,9 @@ if (english == 1) {
   #try(Sys.setlocale("LC_TIME", "en_US.UTF-8"), silent = TRUE)
   prompt_template_BDF <- function(d, q_trim, y_prev) {
     paste0(
-      "Forget previous instructions and previous answers. You are François Villeroy de Galhau (Governor of the Banque de France), giving a speech on France economic outlook. Today is ",
+      "Forget previous instructions and previous answers. You are ", BDF_current_boss(d), " (Governor of the Banque de France), giving a speech on France economic outlook. Today is ",
       format(d, "%d %B %Y"), ". ",
-      "You will be provided with the latest Banque de France Monthly business survey (EMC). Using ONLY the information in that document and information available on or before ", 
+      "You will be provided with the latest Banque de France Monthly business survey (Industry, Services and Construction). Using ONLY the information in that document and information available on or before ", 
       format(d, "%d %B %Y"), ", provide a numeric forecast (decimal percent with sign, e.g. +0.3) for French real GDP growth for Q", q_trim, " ", y_prev, 
       " and a confidence level (integer 0-100). Output EXACTLY in this format on a single line (no extra text): ",
       "<forecast> (<confidence>). ",
@@ -187,7 +250,7 @@ if (english == 1) {
   
   prompt_template_INSEE <- function(d, q_trim, y_prev) {
     paste0(
-      "Forget previous instructions and previous answers. You are ", INSEE_current_boss(y_prev), " director General at INSEE (National Institute of Statistics and Economic Studies), analyzing the French economy. Today is ",
+      "Forget previous instructions and previous answers. You are ", INSEE_current_boss(d), " director General at INSEE (National Institute of Statistics and Economic Studies), analyzing the French economy. Today is ",
       format(d, "%d %B %Y"), ". ",
       "You will be provided with the latest INSEE monthly business tendency surveys (Industry, Services and Construction) for France. Using ONLY the information in these documents and information available on or before ", 
       format(d, "%d %B %Y"), ", provide a numeric forecast (decimal percent with sign, e.g. +0.3) for French real GDP growth for Q", q_trim, " ", y_prev,
@@ -204,9 +267,9 @@ if (english == 1) {
   #try(Sys.setlocale("LC_TIME", "fr_FR.UTF-8"), silent = TRUE)
   prompt_template_BDF <- function(d, q_trim, y_prev) {
     paste0(
-      "Oubliez les instructions et réponses précédentes. Vous êtes François Villeroy de Galhau, Gouverneur de la Banque de France, prononçant un discours sur les perspectives économiques de la France. Nous sommes le ",
+      "Oubliez les instructions et réponses précédentes. Vous êtes ", BDF_current_boss(d),  ", Gouverneur de la Banque de France, prononçant un discours sur les perspectives économiques de la France. Nous sommes le ",
       format(d, "%d %B %Y"), ". ",
-      "Vous recevrez la dernière enquête mensuelle de conjoncture de la Banque de France (EMC). En utilisant UNIQUEMENT les informations contenues dans ce document et celles disponibles au plus tard le ", 
+      "Vous recevrez la dernière enquête mensuelle de conjoncture de la Banque de France (Industrie, Services et Batiment). En utilisant UNIQUEMENT les informations contenues dans ce document et celles disponibles au plus tard le ", 
       format(d, "%d %B %Y"), ", fournissez une prévision numérique (pourcentage décimal avec signe, ex. +0.3) pour la croissance du PIB réel français pour le trimestre ", q_trim, " ", y_prev,
       " ainsi qu'un niveau de confiance (entier 0-100). Renvoyez EXACTEMENT sur une seule ligne (aucun texte supplémentaire) : ",
       "<prévision> (<confiance>). ",
@@ -217,7 +280,7 @@ if (english == 1) {
   
   prompt_template_INSEE <- function(d, q_trim, y_prev) {
     paste0(
-      "Oubliez les instructions et réponses précédentes. Vous êtes ", INSEE_current_boss(y_prev),  "Directeur Général de l'INSEE, analysant l'économie française. Nous sommes le ",
+      "Oubliez les instructions et réponses précédentes. Vous êtes ", INSEE_current_boss(d),  ", Directeur Général de l'INSEE, analysant l'économie française. Nous sommes le ",
       format(d, "%d %B %Y"), ". ",
       "Vous recevrez les dernières enquêtes de conjoncture mensuelles de l'INSEE (EMI, SER, BAT) pour la France. En utilisant UNIQUEMENT les informations contenues dans ces documents et celles disponibles au plus tard le ", 
       format(d, "%d %B %Y"), ", fournissez une prévision numérique (pourcentage décimal avec signe, ex. +0.3) pour la croissance du PIB réel français pour le trimestre ", q_trim, " ", y_prev,
@@ -322,7 +385,7 @@ t2 <- Sys.time()
 print(diff(range(t1, t2)))
 
 
-#######################
+########################
 #BOUCLE PRINCIPALE INSEE
 ########################
 
@@ -338,7 +401,7 @@ t1 <- Sys.time()
 for (dt in dates) {
   current_date <- as.Date(dt) 
   
-  # Trouver les bon pdf, le chemin d'accès et les concaténer
+  # Trouver les bons pdf, le chemin d'accès et les concaténer
   emi_path <- get_last_insee_docs_by_type(current_date,"EMI",  document_folder_INSEE)
   ser_path <- get_last_insee_docs_by_type(current_date, "SER",document_folder_INSEE)
   bat_path <- get_last_insee_docs_by_type(current_date, "BAT",document_folder_INSEE)
@@ -474,8 +537,8 @@ df_INSEE_text <- df_INSEE_text |>
   select(!Date)
 
 #Corrélation entre les prévisions
-BDF_cor   <- rowMeans(df_BDF, na.rm = TRUE)
-INSEE_cor <- rowMeans(df_INSEE, na.rm = TRUE)
+BDF_cor   <- rowMeans(df_BDF_text, na.rm = TRUE)
+INSEE_cor <- rowMeans(df_INSEE_text, na.rm = TRUE)
 
 
 correlation <- cor(BDF_cor, INSEE_cor, method = "spearman") ## à revoir/vérifier avec plus d'observations parce que affiche 1
