@@ -22,9 +22,6 @@ sys_prompt <- ifelse(english == 1,
 document_folder_BDF <- "docEMC_clean"
 document_folder_INSEE <- "INSEE_Scrap"
 
-# dates (exemple)
-dates <- as.Date(c("2023-03-01", "2023-06-01")) # format aaaa-mm-jj
-
 
 # API Key (pour ellmer on utilise API_KEY_GEMINI)
 cle_API <- Sys.getenv("API_KEY_GEMINI")
@@ -45,30 +42,37 @@ chat_gemini <- chat_google_gemini( system_prompt = sys_prompt,
 date_prev_temp_BDF <- read_excel("Synthese_fileEMC.xlsx")
 colnames(date_prev_temp_BDF)[1:4] <- c("fichier", "date_courte", "date_longue", "trimestre")
 
-date_prev_temp_BDF <- date_prev_temp_BDF %>%
+# Reformater les noms de fichiers : EMC_MM_YYYY → YYYY_MM_EMC
+date_prev_temp_BDF <- date_prev_temp_BDF |>
   mutate(
-    annee_prev = as.numeric(str_extract(fichier, "^\\d{4}")),        # 4 chiffres au début
-    mois_prev  = as.numeric(str_extract(fichier, "(?<=\\d{4}_)\\d{1,2}"))  # chiffres après l'année et le _
-  ) %>%
+    fichier = str_replace(fichier, "^EMC_(\\d{1,2})_(\\d{4})$", "\\2_\\1_EMC")
+  ) |>
+  # Forcer les mois à deux chiffres
+  mutate(
+    fichier = str_replace(fichier, "^(\\d{4})_(\\d{1})_", "\\1_0\\2_")
+  )
+
+# Extraire année et mois + filtrer les années pertinentes
+date_prev_temp_BDF <- date_prev_temp_BDF |>
+  mutate(
+    annee_prev = as.numeric(str_extract(fichier, "^\\d{4}")),
+    mois_prev  = as.numeric(str_extract(fichier, "(?<=\\d{4}_)\\d{2}"))
+  ) |>
   filter(annee_prev >= 2015)
 
-
-date_prev_temp_BDF <- date_prev_temp_BDF %>%
+# Créer les variables de dates
+date_prev_temp_BDF <- date_prev_temp_BDF |>
   mutate(
-    annee_prev = as.numeric(str_extract(fichier, "^\\d{4}")),  # 4 chiffres au début
-    mois_prev  = as.numeric(str_extract(fichier, "(?<=EMC_)\\d{1,2}(?=_)")), # chiffres après l'année et le _
     date_courte_d = as.Date(as.character(date_courte)),
-    date_longue_d = as.Date(as.numeric((date_longue)), origin = "1899-12-30")
-  ) %>%
-  mutate(
+    date_longue_d = as.Date(date_longue, format = "%Y-%m-%d"),
     date_finale_d = case_when(
       annee_prev >= 2015 & annee_prev <= 2019 ~ date_courte_d,
       annee_prev >= 2020 & annee_prev <= 2024 ~ date_longue_d
     )
   )
 
-date_prev_BDF<- date_prev_temp_BDF %>%
-  select(fichier, trimestre, date_finale_d) %>%
+date_prev_BDF<- date_prev_temp_BDF |>
+  select(fichier, trimestre, date_finale_d) |>
   filter(!is.na(date_finale_d))
   # on supprime les lignes où la variable date_finale_d est manquante (NA) 
   # car pas de publication de l'enquête (pandémie)
@@ -76,8 +80,11 @@ date_prev_BDF<- date_prev_temp_BDF %>%
 print(date_prev_BDF)
 
 
+### Initialisation de la date à la veille de la parution de chaque EMC ##
 
-
+df_date <- date_prev_BDF|>
+  mutate(`Date Prevision` = date_finale_d - 1,
+         .keep = "unused")
 
 ###################################
 # Fonctions utilitaires
@@ -86,15 +93,15 @@ print(date_prev_BDF)
 # get_last_doc : retourne le nom du fichier (ex: "EMC_2_2023") le plus récent disponible par rapport à la date où on se place
 get_last_doc <- function(date_prev_df, target_date) {
   # target_date is Date
-  candidats <- date_prev_df %>%
+  candidats <- date_prev_df |>
     filter(date_finale_d <= as.Date(target_date))
   if (nrow(candidats) == 0) {
     warning(paste("Aucun document disponible avant", target_date))
     return(NULL)
   }
-  dernier <- candidats %>%
-    arrange(desc(date_finale_d)) %>%
-    slice(1) %>%
+  dernier <- candidats |>
+    arrange(desc(date_finale_d)) |>
+    slice(1) |>
     pull(fichier)
   return(dernier)
 }
@@ -564,3 +571,6 @@ ggplot(both_text_long, aes(x = as.numeric(forecast), fill = source, color = sour
 #Donner : enquete bdf (la donner à BDF), insee (la donner à INSEE) + PIB ?
 #Ajouter de manière récursive les erreurs du LLM dans ses forecast en t-1 ?
 
+#vecteur des dates : veilles des EMC + rechercher l'emc le lendemain et le dernier enquête INSEE en date
+
+#prompt identique entre Text et noText (avec une phrase sur les pdf en plus juste)
