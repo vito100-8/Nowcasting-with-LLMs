@@ -3,3 +3,4 @@ gitignore
 env
 *.xlsx
 .Rproj.user
+.env
