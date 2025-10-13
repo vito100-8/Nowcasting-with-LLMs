@@ -6,7 +6,7 @@ rm(list = ls())
 # Repertoire/ env
 setwd(dirname(getActiveDocumentContext()$path))
 here::i_am("LLM_TS.R")
-load_dot_env('env')
+load_dot_env('.env')
 
 
 ###################################
@@ -14,12 +14,9 @@ load_dot_env('env')
 ###################################
 
 #Paramètres généraux
-english <- 1
-
-#Paramètres LLM
-
-temp_LLM <- 0.7
-n_repro <- 2
+english <- 1 # 1 si prompt en anglais
+temp_LLM <- 0.7  # Niveau de créativité des réponses 0.3/0.7/1.5 (castro-Leibovici)
+n_repro <- 2  # Nombre de prévisions générées par date
 
 # API Key (pour ellmer on utilise API_KEY_GEMINI)
 cle_API <- Sys.getenv("API_KEY_GEMINI")
@@ -122,7 +119,7 @@ chat_gemini <- chat_google_gemini( system_prompt = "You will act as the economic
                                    base_url = "https://generativelanguage.googleapis.com/v1beta/", 
                                    api_key = cle_API, 
                                    model = "gemini-2.5-pro", 
-                                   params(temperature = 0.7, max_tokens = 5000)
+                                   params(temperature = temp_LLM, max_tokens = 5000)
 )
 
 # Creation de la list contenant les résultats

@@ -16,8 +16,11 @@ load_dot_env('env')
 ###################################################
 
 
-#langue utilisé
+#Paramètres généraux
 english <- 1 # 1 si prompt en anglais
+temp_LLM <- 0.7  # Niveau de créativité des réponses 0.3/0.7/1.5 (castro-Leibovici)
+n_repro <- 2  # Nombre de prévisions générées par date
+
 
 # Définition des modèles et URLs
 LLM_configs <- list(
@@ -33,9 +36,6 @@ LLM_configs <- list(
 LLM <- "GEMINI"  # Modifier ici pour changer de modèle
 model_LLM <- LLM_configs[[LLM]]$model
 url_LLM <- LLM_configs[[LLM]]$url
-
-temp_LLM <- 0.7  # Niveau de créativité des réponses 0.3/0.7/1.5 (castro-Leibovici)
-n_repro <- 5  # Nombre de prévisions générées par date
 
 # Charger la clé API
 
