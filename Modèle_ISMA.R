@@ -14,6 +14,8 @@ window <- 80
 #ROLLING WINDOW OU RECURSIF
 rolling <- TRUE 
 
+
+
 #####################
 #INITIALISATION
 ######################
@@ -26,6 +28,26 @@ df_PIB_ENQ <-  df_PIB_ENQ |>
                      mean(PIB_PR),
                      lag(PIB_PR)), 
          dates = as.Date((dates), format = "%Y-%m-%d")) 
+
+####################################
+# Choix méthode pour trimestres covid
+###################################
+
+#Dummy de 2020Q1 à 2021Q4
+
+df_PIB_ENQ <- df_PIB_ENQ |>
+  mutate(COVID = ifelse(dates > as.Date("2020-01-01") & dates < as.Date("2022-01-01"), 1, 0))
+
+
+#Estimation du modèle en dehors de la période 
+
+df_PIB_ENQ <- df_PIB_ENQ |>
+  filter(dates < as.Date("2020-01-01") | dates > as.Date("2022-01-01"))
+
+
+###############################
+# Boucle prévision
+###############################
 
 #Date de début de training
 start_forecast_date <- as.Date("2010-02-01") #Peut être automatisé car là nécessaire de rentrer une date comprise dans df_PIB_Q$dates

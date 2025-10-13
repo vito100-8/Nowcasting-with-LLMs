@@ -15,6 +15,9 @@ load_dot_env('.env')   # modif MB => j'ai  rajouté .
 english <- 1
 temp_LLM <- 0.7
 n_repro <- 2
+sys_prompt <- ifelse(english == 1,
+                     "You will act as the economic agent you are told to be. Answer based on your knowledge, the document provided and your researches in less than 200 words, do not invent facts." ,
+                     "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances, du document fourni et de vos recherches, n'inventez pas de faits.")
 
 document_folder_BDF <- "docEMC_clean"
 document_folder_INSEE <- "INSEE_Scrap"
@@ -28,7 +31,7 @@ cle_API <- Sys.getenv("API_KEY_GEMINI")
 
 #Initialisation LLM
 if (cle_API == "") stop("Clé API Gemini manquante. Ajoute API_KEY_GEMINI dans env/.Renviron")
-chat_gemini <- chat_google_gemini( system_prompt = "You will act as the economic agent you are told to be. Answer based on your knowledge in less than 200 words, and researches, do not invent facts." ,
+chat_gemini <- chat_google_gemini( system_prompt = sys_prompt,
                                    base_url = "https://generativelanguage.googleapis.com/v1beta/", 
                                    api_key = cle_API, 
                                    model = "gemini-2.5-pro", 
@@ -111,51 +114,6 @@ path_from_docname <- function(doc_name, folder) {
 
 
 # Obtenir depuis le dossier les 3 documents : SER, BAT, et EMI en les cherchant par date
-"get_last_insee_docs_by_type <- function(target_date, doc_type, folder_to_search) {
-  
-  target_date <- as.Date(target_date)
-  
-  # Format des fichiers : XXX_MM_YYYY, on parse par mois et année
-  pattern <- paste0("^(\\d{4})_(\\d{2})_", doc_type, "\\.pdf$")
-  #pattern <- paste0("^", doc_type, "_(\\d{1,2})_(\\d{4})\\.pdf$")
-  all_files <- list.files(folder_to_search, pattern = pattern, full.names = FALSE) 
-  
-  if (length(all_files) == 0) {
-    warning(paste("Aucun fichier", doc_type, "trouvé dans", folder_to_search))
-    return(NULL)
-  }
-  
-  # parse par date 
-  print(all_files)
-  cat("Nombre de fichiers trouvés :", length(all_files), "\n")
-  
-  file_dates_df <- tibble(
-    filename = all_files,
-    month = as.integer(str_extract(all_files, "(?<=_)\\d{1,2}(?=_)")),
-    year = as.integer(str_extract(all_files, "(?<=_\\d{1,2}_)\\d{4}(?=\\.pdf$)"))
-  ) |>
-    mutate(
-      doc_date = ymd(paste(year, month, "01", sep = "-")) 
-    ) 
-  
-  # Filtrer les documents disponibles avant la target_date
-  doc_possible <- file_dates_df |>
-    filter(doc_date < target_date)
-  
-  # Prendre LE document le plus récent
-  print(file_dates_df)
-  print(doc_possible)
-  
-  most_recent_doc_filename <- doc_possible |>
-    arrange(desc(doc_date)) |>
-    slice(1) |> 
-    pull(filename)
-  
-  # Retourner le chemin complet du document le plus récent
-  full_path <- path_from_docname(most_recent_doc_filename, folder = folder_to_search) 
-  return(full_path) 
-}
-"
 get_last_insee_docs_by_type <- function(target_date, doc_type, folder_to_search) {
   
   target_date <- as.Date(target_date)

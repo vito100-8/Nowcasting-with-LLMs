@@ -21,6 +21,8 @@ english <- 1 # 1 si prompt en anglais
 temp_LLM <- 0.7  # Niveau de créativité des réponses 0.3/0.7/1.5 (castro-Leibovici)
 n_repro <- 2  # Nombre de prévisions générées par date
 
+# Initialisation des dates
+dates <- as.Date(c("2012-01-03","2015-07-23", "2018-09-12","2023-03-15", "2023-06-15")) #à changer manuellement
 
 # Définition des modèles et URLs
 LLM_configs <- list(
@@ -164,10 +166,7 @@ poser_question_CLAUDE <- function(question, api_key = cle_API) {
 f_question <- get(paste0("poser_question_", LLM))
 
 
-# Initialisation des dates
 
-
-dates <- as.Date(c("2012-01-03","2015-07-23", "2018-09-12","2023-03-15", "2023-06-15")) #à changer manuellement
 
 #####################
 # QUESTIONS A POSER
