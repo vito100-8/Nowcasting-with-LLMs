@@ -5,7 +5,7 @@ rm(list = ls())
 # Repertoire/ env
 setwd(dirname(getActiveDocumentContext()$path))
 here::i_am("LLM_Text.R")
-load_dot_env('.env')   # modif MB => j'ai  rajouté .
+load_dot_env('.env')   
 
 ###################################
 # Paramètres initiaux
@@ -423,9 +423,9 @@ t.test(df_BDF_text, df_INSEE_text, var.equal = FALSE)
 ###########
 
 #Distribution  des prev selon BDF/INSEE pour chaque date : violin (((à voir lequel plus pertinent)))
-ggplot(both_text_long, aes(x = source, y = as.numeric(forecast), fill = source)) +
+ggplot(bdf_text_long, aes(x = source, y = as.numeric(forecast), fill = source)) +
   geom_violin(alpha = 0.6, trim = FALSE) +
-  facet_wrap(~ Date, scales = "free_y") +
+  #facet_wrap(~ Date, scales = "free_y") +
   labs(
     title = "Distribution des prévisions par organisme",
     y = "Prévision",
@@ -434,9 +434,9 @@ ggplot(both_text_long, aes(x = source, y = as.numeric(forecast), fill = source))
   theme_minimal()
 
 # Boxplot
-ggplot(both_text_long, aes(x = source, y = as.numeric(forecast), fill = source)) +
+ggplot(bdf_text_long, aes(x = source, y = as.numeric(forecast), fill = source)) +
   geom_boxplot(alpha = 0.7, outlier.shape = 16, outlier.size = 1.5) +
-  facet_wrap(~ Date, scales = "free_y") +
+  #facet_wrap(~ Date, scales = "free_y") +
   labs(
     title = "Distribution des prévisions par organisme (Boxplot)",
     y = "Prévision",
@@ -445,9 +445,9 @@ ggplot(both_text_long, aes(x = source, y = as.numeric(forecast), fill = source))
   theme_minimal()
 
 #Densité
-ggplot(both_text_long, aes(x = as.numeric(forecast), fill = source, color = source)) +
+ggplot(bdf_text_long, aes(x = as.numeric(forecast), fill = source, color = source)) +
   geom_density(alpha = 0.4) +
-  facet_wrap(~ Date, scales = "free") +
+  #facet_wrap(~ Date, scales = "free") +
   labs(
     title = "Distribution des prévisions BDF vs INSEE",
     x = "Prévision",
@@ -464,7 +464,7 @@ ggplot(both_text_long, aes(x = as.numeric(forecast), fill = source, color = sour
 
 ############### A FAIRE #################
 
-
+# NE PAS DONNER D EXEMPLE DANS LE PROMPT POUR NE PAS INDUIRE A CERTAINS RESULTATS (positifs notamment)
 
 #Donner : enquete bdf (la donner à BDF), insee (la donner à INSEE) + PIB ?
 #Ajouter de manière récursive les erreurs du LLM dans ses forecast en t-1 ?

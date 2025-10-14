@@ -13,7 +13,7 @@ pib_reel <- pib_reel |>
 ########################
 
 res_noText <- df_results_BDF 
-res_Text <- df_results_text
+res_Text <- df_results_text_BDF # à modifier avec INSEE en plus ensuite
 res_ts<- df_results_TS
 res_ISMA <- df_ISMA
 
@@ -153,6 +153,98 @@ MAE_df <- avg_error |>
     MAE_ISMA   = mean(abs(ISMA_FE))
   )
 
+
+###################
+res_Text <- res_Text |>
+  mutate(
+    dates = Date,
+    forecast_mean = rowMeans(across(starts_with("forecast_")), na.rm = TRUE)
+  )
+
+
+res_Text <- res_Text |>
+  arrange(dates) |>
+  mutate(
+    trimestre_id = rep(1:ceiling(n()/3), each = 3, length.out = n()),
+    mois_in_quarter = rep(1:3, times = ceiling(n()/3))[1:n()]
+  )
+
+
+res_Text_wide <- res_Text |>
+  select(trimestre_id, mois_in_quarter, starts_with("forecast_")) |>
+  pivot_wider(
+    id_cols = trimestre_id,
+    names_from = mois_in_quarter,
+    values_from = starts_with("forecast_"),
+    names_glue = "{.value}_month{mois_in_quarter}"
+  )
+
+
+res_Text_wide <- res_Text_wide |>
+  mutate(
+    year = rep(year(res_Text$dates[seq(1, nrow(res_Text), by = 3)]), each = 1, length.out = nrow(res_Text_wide)),
+    month_median = rep(c(2,5,8,11), length.out = nrow(res_Text_wide)),
+    dates = as.Date(paste(year, month_median, 1, sep = "-"))
+  ) |>
+  select(dates, forecast_mean_month1:forecast_mean_month3, -year, -month_median)
+
+final_df <- res_Text_wide |>
+  left_join(
+    res_ISMA |>
+      mutate(dates = floor_date(dates, unit = "month")) |>
+      select(dates, forecast_M1:forecast_M3, PIB_PR),
+    by = "dates"
+  )
+
+final_df <- final_df |>
+  select(dates, everything())
+
+
+#### CALCUL MAE et RMSE
+forecast_text_cols <- c("forecast_mean_month1", "forecast_mean_month2","forecast_mean_month3")
+forecast_isma_cols <- c("forecast_M1", "forecast_M2","forecast_M3")
+
+# Fonction pour avoir un MAE par modèle
+compute_mae <- function(df, forecast_cols, actual_col) {
+  # Calcul pour chaque colonne
+  mae_per_col <- sapply(forecast_cols, function(col) {
+    mean(abs(df[[actual_col]] - df[[col]]), na.rm = TRUE)
+  })
+  # Moyenne sur toutes les colonnes 
+  mean(mae_per_col)
+}
+
+# Fonction calcul RMSE
+compute_rmse <- function(df, forecast_cols, actual_col) {
+  # RMSE pour chaque colonne
+  rmse_per_col <- sapply(forecast_cols, function(col) {
+    sqrt(mean((df[[actual_col]] - df[[col]])^2, na.rm = TRUE))
+  })
+  # Moyenne sur toutes les colonnes
+  mean(rmse_per_col)
+}
+
+# MAE et RMSE de chaque modèle
+mae_text  <- compute_mae(final_df, forecast_text_cols, "PIB_PR")
+mae_isma  <- compute_mae(final_df, forecast_isma_cols, "PIB_PR")
+
+rmse_text <- compute_rmse(final_df, forecast_text_cols, "PIB_PR")
+rmse_isma <- compute_rmse(final_df, forecast_isma_cols, "PIB_PR")
+
+# RECAP
+metrics_df <- data.frame(
+  MAE_Text  = mae_text,
+  MAE_ISMA  = mae_isma,
+  RMSE_Text = rmse_text,
+  RMSE_ISMA = rmse_isma
+)
+
+metrics_df
+
+
+
+
+##################
 # RAJOUTER UN MCS AVEC ISMA AUSSI ?
 
 #prendre une mediane plutot
