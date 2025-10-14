@@ -62,5 +62,9 @@ df_enq_INSEE_final <- df_enq_INSEE_long %>%
 
 #CODE POUR ORDONNER LES DONNES BDF
 
+#Essayer donner csv en input (xls_write) : recréer un fichier excel/csv  à chaque itération car nouvelle date
+##### Mettre les anciennes prévisions des enquêtes (EMC) , réflechir comment faire pour les prev de l'INSEE
+#### VS erreur du LLM
 
 
+#EI = M - 1 (si prévision en janvier on prend jusqu'en décembre)

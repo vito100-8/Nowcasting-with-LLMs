@@ -63,7 +63,7 @@ poser_question_CHAT <- function(question,api_key = cle_API) {
   if (english == 0) {
     role_system <- "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et de vos recherches, n'inventez pas de faits."
   } else {
-    role_system <- "You will act as the economic agent you are told to be. Answer based on your knowledge in less than 200 words, and researches, do not invent facts."
+    role_system <- "You will act as the economic agent you are told to be. Answer based on your knowledge and researches in less than 200 words, do not invent facts."
   }
   
   body <- list(
@@ -178,9 +178,10 @@ if (english == 1) {
   #try(Sys.setlocale("LC_TIME", "en_US.UTF-8"), silent = TRUE)
   prompt_template_BDF <- function(d, q_trim, y_prev) {
     paste0(
-      "Forget previous instructions and previous answers. You are François Villeroy de Galhau (Governor of the Banque de France), and you are giving a speech on France economic outlook. Today is ",
+      "Forget previous instructions and previous answers. You are ", BDF_current_boss(d), " (Governor of the Banque de France), and you are giving a speech on France economic outlook. Today is ",
       format(d, "%d %B %Y"), ". ",
-      "Using only information that was available on or before ", format(d, "%d %B %Y"), 
+      "Using only information that was available on or before ", 
+      format(d, "%d %B %Y"), 
       ", provide a numeric forecast (decimal percent with sign, e.g. +0.3) for French real GDP growth for Q", q_trim, " ", y_prev, 
       " and a confidence level (integer 0-100). Output EXACTLY in this format on a single line (no extra text):\n",
       "<forecast> (<confidence>)\n",
@@ -190,7 +191,7 @@ if (english == 1) {
   }
   prompt_template_INSEE <- function(d, q_trim, y_prev) {
     paste0(
-      "Forget previous instructions and previous answers. You are François Jean-Luc Tavernier, Director general of INSEE, and you are giving a speech on France economic outlook. Today is ",
+      "Forget previous instructions and previous answers. You are ", INSEE_current_boss(d), ", Director general of INSEE, and you are giving a speech on France economic outlook. Today is ",
       format(d, "%d %B %Y"), ". ",
       "Using only information that was available on or before ", format(d, "%d %B %Y"), 
       ", provide a numeric forecast (decimal percent with sign, e.g. +0.3) for French real GDP growth for Q", q_trim, " ", y_prev, 
@@ -204,7 +205,7 @@ if (english == 1) {
   #try(Sys.setlocale("LC_TIME", "fr_FR.UTF-8"), silent = TRUE)
   prompt_template_BDF <- function(d, q_trim, y_prev) {
     paste0(
-      "Oubliez les instructions et les réponses précédentes. Vous êtes François Villeroy de Galhau, le Gouverneur de la Banque de France, qui prononce un discours sur les perspectives économiques de la France. Nous sommes le ",
+      "Oubliez les instructions et les réponses précédentes. Vous êtes ", BDF_current_boss(d), ", le Gouverneur de la Banque de France, qui prononce un discours sur les perspectives économiques de la France. Nous sommes le ",
       format(d, "%d %B %Y"), ". ",
       "En utilisant uniquement les informations disponibles au plus tard le ", format(d, "%d %B %Y"),
       ", fournissez une prévision numérique (pourcentage décimal avec signe, ex. +0.3) pour la croissance du PIB réel français pour le trimestre ", q_trim, " ", y_prev,
@@ -216,7 +217,7 @@ if (english == 1) {
   }
   prompt_template_INSEE <- function(d, q_trim, y_prev) {
     paste0(
-      "Oubliez les instructions et les réponses précédentes. Vous êtes Jean-Luc Tavernier, Directeur Général de l'INSEE, qui prononce un discours sur les perspectives économiques de la France. Nous sommes le ",
+      "Oubliez les instructions et les réponses précédentes. Vous êtes ", INSEE_current_boss(d), ", Directeur Général de l'INSEE, qui prononce un discours sur les perspectives économiques de la France. Nous sommes le ",
       format(d, "%d %B %Y"), ". ",
       "En utilisant uniquement les informations disponibles au plus tard le ", format(d, "%d %B %Y"),
       ", fournissez une prévision numérique (pourcentage décimal avec signe, ex. +0.3) pour la croissance du PIB réel français pour le trimestre ", q_trim, " ", y_prev,

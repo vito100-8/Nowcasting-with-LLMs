@@ -17,8 +17,8 @@ english <- 1
 temp_LLM <- 0.7
 n_repro <- 2
 sys_prompt <- ifelse(english == 1,
-                     "You will act as the economic agent you are told to be. Answer based on your knowledge, the document provided and your researches in less than 200 words, do not invent facts." ,
-                     "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances, du document fourni et de vos recherches, n'inventez pas de faits.")
+                     "You will act as the economic agent you are told to be. Answer based on your knowledge and the document provided in less than 200 words, do not invent facts." ,
+                     "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et du document fourni, n'inventez pas de faits.")
 
 document_folder_BDF <- "docEMC_clean"
 document_folder_INSEE <- "INSEE_Scrap"
@@ -75,119 +75,6 @@ date_prev_BDF<- date_prev_temp_BDF %>%
 # car pas de publication de l'enquête (pandémie)
 
 print(date_prev_BDF)
-
-
-
-
-
-###################################
-# Fonctions utilitaires
-###################################
-
-# get_last_doc : retourne le nom du fichier (ex: "EMC_2_2023") le plus récent disponible par rapport à la date où on se place
-get_last_12_doc <- function(date_prev_df, target_date) {
-  # target_date is Date
-  candidats <- date_prev_df %>%
-    filter(date_finale_d <= as.Date(target_date))
-  
-  if (nrow(candidats) == 0) {
-    warning(paste("Aucun document disponible avant", target_date))
-    return(NULL)
-  }
-  
-  derniers <- candidats %>%
-    arrange(desc(date_finale_d)) %>%
-    slice_head(n = 12) %>%   #prendre les 12 dernières enquêtes BDF
-    pull(fichier)
-  
-  return(derniers)
-}
-
-# path_from_docname : renvoie chemin complet vers le PDF local 
-path_from_docname <- function(doc_name, folder) {
-  if (is.null(doc_name)) return(NULL)
-  if (!grepl("\\.pdf$", doc_name, ignore.case = TRUE)) doc_name <- paste0(doc_name, ".pdf")
-  path <- file.path(folder, doc_name)
-  if (!file.exists(path)) {
-    warning("Fichier introuvable : ", path)
-    return(NULL)
-  }
-  return(normalizePath(path, winslash = "/", mustWork = TRUE))
-}
-
-
-
-# Obtenir depuis le dossier les 3 documents : SER, BAT, et EMI en les cherchant par date
-get_last_12_insee_docs_by_type <- function(target_date, doc_type, folder_to_search) {
-  
-  target_date <- as.Date(target_date)
-  
-  # Format : AAAA_MM_TYPE.pdf
-  pattern <- paste0("^(\\d{4})_(\\d{2})_", doc_type, "\\.pdf$")
-  all_files <- list.files(folder_to_search, pattern = pattern, full.names = FALSE)
-  
-  if (length(all_files) == 0) {
-    warning(paste("Aucun fichier", doc_type, "trouvé dans", folder_to_search))
-    return(NULL)
-  }
-  
-  # Extraction stricte : 4 chiffres + underscore + 2 chiffres
-  file_dates_df <- tibble(
-    filename = all_files,
-    year  = as.integer(str_extract(all_files, "^\\d{4}")),
-    month = as.integer(str_extract(all_files, "(?<=\\d{4}_)\\d{2}"))
-  ) |>
-    mutate(doc_date = ymd(paste(year, month, "01", sep = "-")))
-  
-  doc_possible <- file_dates_df |>
-    filter(doc_date < target_date)
-  
-  if (nrow(doc_possible) == 0) {
-    warning("Aucun document antérieur à la date cible")
-    return(NULL)
-  }
-  
-  most_recent_doc_filename <- doc_possible |>
-    arrange(desc(doc_date)) |>
-    slice_head(n = 12) |> 
-    pull(filename)
-  
-  full_path <- path_from_docname(most_recent_doc_filename, folder = folder_to_search) 
-  return(full_path)
-}
-
-
-
-#Concaténer les enquêtes de l'INSEE/BDF en un PDF
-merge_pdfs_INSEE <- function(files, output_path) {
-  pdf_combine(input = files, output = output_path)
-  return(output_path)
-} 
-
-#Dirigeant de l'INSEE selon la date
-INSEE_current_boss <- function(y_p){
-  
-  if(y_p <= as.Date("2012-02-21")){
-    return("Jean-Philippe Cotis")
-  }else if (y_p <= as.Date("2025-05-31")){
-    return("Jean-Luc Tavernier")
-  }else{
-    return("Fabrice Lenglart")
-  }
-}
-
-
-#Dirigeant de la BDF selon la date
-BDF_current_boss <- function(y_p){
-  
-  if(y_p <= as.Date("2002-12-31")){
-    return("Jean-Claude Trichet")
-  }else if (y_p <= as.Date("2015-10-31")){
-    return("Christian Noyer")
-  }else{
-    return("François Villeroy de Galhau")
-  }
-}
 
 
 ###################################

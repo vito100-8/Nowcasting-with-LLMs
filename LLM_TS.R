@@ -38,32 +38,7 @@ gdp_ts <- gdp_ts |>
 
 
 
-#Prendre les données de la TS jusqu'à la date de prévision
-get_last_ts <-function(target_date, df_ts){
-  target_date <- as.Date(target_date)
-  
-  # Transformer Year + Quarter en date (dernier jour du trimestre)
-  df_ts <- df_ts %>%
-    mutate(
-      date_finale_d = case_when(
-        Trimestre == 1 ~ ymd(paste0(Année, "-04-30")),
-        Trimestre == 2 ~ ymd(paste0(Année, "-07-30")),
-        Trimestre == 3 ~ ymd(paste0(Année, "-10-30")),
-        Trimestre == 4 ~ ymd(paste0(Année, "-01-30"))
-      )
-    )
-  
-  # Filtrer toutes les données ≤ target_date
-  data_ts <- df_ts %>%
-    filter(date_finale_d <= target_date)
-  
-  if (nrow(data_ts) == 0) {
-    warning(paste("Aucune donnée disponible avant", target_date))
-    return(NULL)
-  }
-  
-  return(data_ts)
-}
+
 
 ###################################
 # Prompts

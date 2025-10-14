@@ -16,8 +16,8 @@ english <- 1
 temp_LLM <- 0.7
 n_repro <- 2
 sys_prompt <- ifelse(english == 1,
-                     "You will act as the economic agent you are told to be. Answer based on your knowledge, the document provided and your researches in less than 200 words, do not invent facts." ,
-                     "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances, du document fourni et de vos recherches, n'inventez pas de faits.")
+                     "You will act as the economic agent you are told to be. Answer based on your knowledge and the document provided in less than 200 words, do not invent facts." ,
+                     "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et du document fourni, n'inventez pas de faits.")
 
 document_folder_BDF <- "docEMC_clean"
 document_folder_INSEE <- "INSEE_Scrap"
@@ -64,7 +64,11 @@ date_prev_temp_BDF <- date_prev_temp_BDF |>
 date_prev_temp_BDF <- date_prev_temp_BDF |>
   mutate(
     date_courte_d = as.Date(as.character(date_courte)),
-    date_longue_d = as.Date(date_longue, format = "%Y-%m-%d"),
+    date_longue_d = case_when(
+      is.na(date_longue) ~ as.Date(NA),
+      suppressWarnings(!is.na(as.numeric(date_longue))) ~ as.Date(as.numeric(date_longue), origin = "1899-12-30"),
+      TRUE ~ as.Date(NA)
+    ),
     date_finale_d = case_when(
       annee_prev >= 2015 & annee_prev <= 2019 ~ date_courte_d,
       annee_prev >= 2020 & annee_prev <= 2024 ~ date_longue_d
@@ -84,113 +88,7 @@ print(date_prev_BDF)
 
 df_date <- date_prev_BDF|>
   mutate(`Date Prevision` = date_finale_d - 1,
-         .keep = "unused")
-
-###################################
-# Fonctions utilitaires
-###################################
-
-# get_last_doc : retourne le nom du fichier (ex: "EMC_2_2023") le plus récent disponible par rapport à la date où on se place
-get_last_doc <- function(date_prev_df, target_date) {
-  # target_date is Date
-  candidats <- date_prev_df |>
-    filter(date_finale_d <= as.Date(target_date))
-  if (nrow(candidats) == 0) {
-    warning(paste("Aucun document disponible avant", target_date))
-    return(NULL)
-  }
-  dernier <- candidats |>
-    arrange(desc(date_finale_d)) |>
-    slice(1) |>
-    pull(fichier)
-  return(dernier)
-}
-
-# path_from_docname : renvoie chemin complet vers le PDF local 
-path_from_docname <- function(doc_name, folder) {
-  if (is.null(doc_name)) return(NULL)
-  if (!grepl("\\.pdf$", doc_name, ignore.case = TRUE)) doc_name <- paste0(doc_name, ".pdf")
-  path <- file.path(folder, doc_name)
-  if (!file.exists(path)) {
-    warning("Fichier introuvable : ", path)
-    return(NULL)
-  }
-  return(normalizePath(path, winslash = "/", mustWork = TRUE))
-}
-
-
-
-# Obtenir depuis le dossier les 3 documents : SER, BAT, et EMI en les cherchant par date
-get_last_insee_docs_by_type <- function(target_date, doc_type, folder_to_search) {
-  
-  target_date <- as.Date(target_date)
-  
-  # Format : AAAA_MM_TYPE.pdf
-  pattern <- paste0("^(\\d{4})_(\\d{2})_", doc_type, "\\.pdf$")
-  all_files <- list.files(folder_to_search, pattern = pattern, full.names = FALSE)
-  
-  if (length(all_files) == 0) {
-    warning(paste("Aucun fichier", doc_type, "trouvé dans", folder_to_search))
-    return(NULL)
-  }
-  
-  # Extraction stricte : 4 chiffres + underscore + 2 chiffres
-  file_dates_df <- tibble(
-    filename = all_files,
-    year  = as.integer(str_extract(all_files, "^\\d{4}")),
-    month = as.integer(str_extract(all_files, "(?<=\\d{4}_)\\d{2}"))
-  ) |>
-    mutate(doc_date = ymd(paste(year, month, "01", sep = "-")))
-  
-  doc_possible <- file_dates_df |>
-    filter(doc_date < target_date)
-  
-  if (nrow(doc_possible) == 0) {
-    warning("Aucun document antérieur à la date cible")
-    return(NULL)
-  }
-  
-  most_recent_doc_filename <- doc_possible |>
-    arrange(desc(doc_date)) |>
-    slice(1) |> 
-    pull(filename)
-  
-  full_path <- path_from_docname(most_recent_doc_filename, folder = folder_to_search) 
-  return(full_path)
-}
-
-
-
-#Concaténer les 3 enquêtes de l'INSEE
-merge_pdfs <- function(files, output_path) {
-  pdf_combine(input = files, output = output_path)
-  return(output_path)
-} 
-
-#Dirigeant de l'INSEE selon la date
-INSEE_current_boss <- function(y_p){
-  
-    if(y_p <= as.Date("2012-02-21")){
-      return("Jean-Philippe Cotis")
-    }else if (y_p <= as.Date("2025-05-31")){
-      return("Jean-Luc Tavernier")
-    }else{
-      return("Fabrice Lenglart")
-    }
-  }
-
-
-#Dirigeant de la BDF selon la date
-BDF_current_boss <- function(y_p){
-  
-  if(y_p <= as.Date("2002-12-31")){
-    return("Jean-Claude Trichet")
-  }else if (y_p <= as.Date("2015-10-31")){
-    return("Christian Noyer")
-  }else{
-    return("François Villeroy de Galhau")
-  }
-}
+         .keep = "none")
 
 
 ###################################
@@ -270,11 +168,11 @@ results_BDF <- list()
 row_id_BDF <- 1 
 
 t1 <- Sys.time()
-for (dt in dates) {
+for (dt in df_date$`Date Prevision`) {
   current_date <- as.Date(dt) 
-  
+
   # Trouver le bon pdf et son path
-  docname <- get_last_doc(date_prev_BDF, current_date)
+  docname <- get_next_doc(date_prev_BDF, current_date)
   pdf_path <- path_from_docname(docname, folder = document_folder_BDF)
   
   if (is.null(pdf_path)) {
@@ -566,7 +464,7 @@ ggplot(both_text_long, aes(x = as.numeric(forecast), fill = source, color = sour
 
 ############### A FAIRE #################
 
-#Essayer donner csv en input (xls_write) : recréer un fichier excel/csv  à chaque itération car nouvelle date
+
 
 #Donner : enquete bdf (la donner à BDF), insee (la donner à INSEE) + PIB ?
 #Ajouter de manière récursive les erreurs du LLM dans ses forecast en t-1 ?
