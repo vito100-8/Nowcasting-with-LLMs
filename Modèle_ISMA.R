@@ -33,16 +33,14 @@ df_PIB_ENQ <-  df_PIB_ENQ |>
 # Choix méthode pour trimestres covid
 ###################################
 
+covid_treatment <- 1 #  0 pour méthode dummy, 1 pour méthode où l'on intègre pas les données covid dans le training dataset
+
 #Dummy de 2020Q1 à 2021Q4
-
-df_PIB_ENQ <- df_PIB_ENQ |>
-  mutate(COVID = ifelse(dates > as.Date("2020-01-01") & dates < as.Date("2022-01-01"), 1, 0))
-
-
-#Estimation du modèle en dehors de la période 
-
-df_PIB_ENQ <- df_PIB_ENQ |>
-  filter(dates < as.Date("2020-01-01") | dates > as.Date("2022-01-01"))
+if (covid_treatment == 0 ){
+  df_PIB_ENQ <- df_PIB_ENQ |>
+    mutate(COVID = ifelse(dates > as.Date("2020-01-01") & dates < as.Date("2022-01-01"), 1, 0))
+  
+}
 
 
 ###############################
@@ -75,8 +73,19 @@ for (i in first_forecast_row:nrow(df_PIB_ENQ)) {
   # Date du forecast
   current_forecast_date <- df_PIB_ENQ$dates[i]
   
-  # Dataset d'entrainement
-  training_data <- df_PIB_ENQ[(ifelse(rolling == TRUE, i-window, 1)):(i-1),  ]
+  # Sélection dataset d'entrainement
+  if (covid_treatment == 1){
+    
+    if (current_forecast_date >=  "2020-02-01" && current_forecast_date < "2022-01-01"){
+      # Dataset d'entrainement
+      i_2019_T4 <- which(df_PIB_ENQ$dates == "2019-11-01")[1]
+      training_data <- df_PIB_ENQ[(ifelse(rolling == TRUE, i-window, 1)):(i_2019_T4),  ]
+    }else{
+      training_data <- df_PIB_ENQ[(ifelse(rolling == TRUE, i-window, 1)):(i-1),  ]
+    }
+    
+  }else{training_data <- df_PIB_ENQ[(ifelse(rolling == TRUE, i-window, 1)):(i-1),  ]
+  }
   
   # Estimation du modèle (réestimé à chaque boucle)
   reg_M1 <- lm(PIB_PR ~ PIB_lag + EVLIV_M1 + PREVPRO_M1 + INDIC09, data = training_data)
@@ -108,35 +117,18 @@ for (i in first_forecast_row:nrow(df_PIB_ENQ)) {
 
 #Df pour comparaison des résultats
 
-df_ISMA <- forecast_results |>
-  mutate(PIB = PIB_PR) 
+df_ISMA <- forecast_results
+ 
 
 
 #########################
 # Analyse des résultats
 #########################
 
-qqnorm(na.omit(df_ISMA$residuals_M1), main = "QQ-Plot des Résidus M1")
-qqline(na.omit(df_ISMA$residuals_M1))
+#MAE
 
-
-
-
-
-
-
-
-###################################
-
-#jpg pour envoyer résultats de régression
-jpeg("reg_M3_summary.jpg", width = 800, height = 600, quality = 100)
-plot.new()
-text(0, 1, paste(capture.output(summary(reg_M1)), collapse = "\n"), adj = c(0,1), cex = 0.8)
-dev.off()
-
-
-#covid quelle méthode ? : dummy ou suppression observation
-#MAE et RMSE direct ? Ou juste erreur directe
-
+M1 <- mean(abs(df_ISMA$forecast_M1 - df_ISMA$PIB_PR))
+M2 <- mean(abs(df_ISMA$forecast_M2 - df_ISMA$PIB_PR))
+M3 <- mean(abs(df_ISMA$forecast_M3 - df_ISMA$PIB_PR))
 
 
