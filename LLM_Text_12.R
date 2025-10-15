@@ -6,7 +6,7 @@ rm(list = ls())
 # Repertoire/ env
 setwd(dirname(getActiveDocumentContext()$path))
 here::i_am("LLM_Text.R")
-load_dot_env('.env')   # modif MB => j'ai  rajouté .
+load_dot_env('.env')  
 
 ###################################
 # Paramètres initiaux
@@ -46,21 +46,21 @@ chat_gemini <- chat_google_gemini( system_prompt = sys_prompt,
 date_prev_temp_BDF <- read_excel("Synthese_fileEMC.xlsx")
 colnames(date_prev_temp_BDF)[1:4] <- c("fichier", "date_courte", "date_longue", "trimestre")
 
-date_prev_temp_BDF <- date_prev_temp_BDF %>%
+date_prev_temp_BDF <- date_prev_temp_BDF |>
   mutate(
     annee_prev = as.numeric(str_extract(fichier, "^\\d{4}")),        # 4 chiffres au début
     mois_prev  = as.numeric(str_extract(fichier, "(?<=\\d{4}_)\\d{1,2}"))  # chiffres après l'année et le _
-  ) %>%
+  ) |>
   filter(annee_prev >= 2015)
 
 
-date_prev_temp_BDF <- date_prev_temp_BDF %>%
+date_prev_temp_BDF <- date_prev_temp_BDF |>
   mutate(
     annee_prev = as.numeric(str_extract(fichier, "^\\d{4}")),  # 4 chiffres au début
     mois_prev  = as.numeric(str_extract(fichier, "(?<=EMC_)\\d{1,2}(?=_)")), # chiffres après l'année et le _
     date_courte_d = as.Date(as.character(date_courte)),
     date_longue_d = as.Date(as.numeric((date_longue)), origin = "1899-12-30")
-  ) %>%
+  ) |>
   mutate(
     date_finale_d = case_when(
       annee_prev >= 2015 & annee_prev <= 2019 ~ date_courte_d,
@@ -68,8 +68,8 @@ date_prev_temp_BDF <- date_prev_temp_BDF %>%
     )
   )
 
-date_prev_BDF<- date_prev_temp_BDF %>%
-  select(fichier, trimestre, date_finale_d) %>%
+date_prev_BDF<- date_prev_temp_BDF |>
+  select(fichier, trimestre, date_finale_d) |>
   filter(!is.na(date_finale_d))
 # on supprime les lignes où la variable date_finale_d est manquante (NA) 
 # car pas de publication de l'enquête (pandémie)

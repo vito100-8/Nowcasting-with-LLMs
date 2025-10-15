@@ -174,6 +174,10 @@ print("Enregistré: resultats_BDF_Gemini_ts.xlsx \n")
 t2 <- Sys.time()
 print(diff(range(t1, t2)))
 
+
+
+
+
 ############### A FAIRE ####################
 
 #DONNER UN FICHIER EXCEL QUI SARRETE AVANT LA DATE DE PREVISION : pas que le LLM aie accès aux dernières données (idem que reco pour text avec xls bright)

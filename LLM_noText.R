@@ -9,7 +9,7 @@ setwd(dirname(getActiveDocumentContext()$path))
 
 here::i_am("LLM_noText.R")
 
-load_dot_env('env')
+load_dot_env('.env')
 
 ###################################################
 #INITIALISATION PARAMETRES
@@ -24,148 +24,18 @@ n_repro <- 2  # Nombre de prévisions générées par date
 # Initialisation des dates
 dates <- as.Date(c("2012-01-03","2015-07-23", "2018-09-12","2023-03-15", "2023-06-15")) #à changer manuellement
 
-# Définition des modèles et URLs
-LLM_configs <- list(
-  #  CHAT = list(model = "gpt-4o-2024-11-20", url = "https://api.openai.com/v1/chat/completions"),
-  CHAT = list(model = "gpt-4-turbo", url = "https://api.openai.com/v1/chat/completions"),  
-  #  GEMINI = list(model = "gemini-1.5-pro-latest" , url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent"),
-  GEMINI = list(model = "gemini-2.0-flash", url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"),
-  #  CLAUDE = list(model = "claude-3-7-sonnet-20250219", url = "https://api.anthropic.com/v1/messages")
-  CLAUDE = list(model = "claude-3-5-haiku-20241022",url = "https://api.anthropic.com/v1/messages") 
+
+# API Key (pour ellmer on utilise API_KEY_GEMINI)
+cle_API <- Sys.getenv("API_KEY_GEMINI")
+
+#Initialisation LLM
+if (cle_API == "") stop("Clé API Gemini manquante. Ajoute API_KEY_GEMINI dans env/.Renviron")
+chat_gemini <- chat_google_gemini( system_prompt = sys_prompt,
+                                   base_url = "https://generativelanguage.googleapis.com/v1beta/", 
+                                   api_key = cle_API, 
+                                   model = "gemini-2.5-pro", 
+                                   params(temperature = temp_LLM, max_tokens = 5000)
 )
-
-
-LLM <- "GEMINI"  # Modifier ici pour changer de modèle
-model_LLM <- LLM_configs[[LLM]]$model
-url_LLM <- LLM_configs[[LLM]]$url
-
-# Charger la clé API
-
-cle_API <- Sys.getenv(paste0("API_KEY_", LLM))
-if (cle_API == "") stop("Clé API manquante pour ", LLM)
-
-
-
-#############################
-#FONCTIONS REQUETE DU CHATBOT
-############################
-
-# Chat-GPT / Mistral / Deepseek
-poser_question_CHAT <- function(question,api_key = cle_API) {
-  url <- url_LLM
-  
-  headers <- c(
-    "Authorization" = paste("Bearer", api_key),
-    "Content-Type" = "application/json"
-  )
-  
-  
-  if (english == 0) {
-    role_system <- "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et de vos recherches, n'inventez pas de faits."
-  } else {
-    role_system <- "You will act as the economic agent you are told to be. Answer based on your knowledge and researches in less than 200 words, do not invent facts."
-  }
-  
-  body <- list(
-    model = model_LLM,
-    temperature = temp_LLM,  # pour des réponses précises et cohérentes (à tester)
-    max_tokens = 200,   # nb max de mots de la réponse générée (ici on attend une réponse concise)
-    messages = list(
-      list(role = "system", content = role_system),
-      list(role = "user", content = question)
-    )
-  )
-  
-  response <- POST(url, add_headers(headers), body = toJSON(body, auto_unbox = TRUE))
-  
-  if (status_code(response) == 200) {
-    content(response, "parsed")$choices[[1]]$message$content
-  } else {
-    paste("Erreur :", status_code(response), content(response, "text", encoding = "UTF-8"))
-  }
-  
-}
-
-# GEMINI
-poser_question_GEMINI <- function(question, api_key = cle_API) {
-  model_query <- paste0(model_LLM, ":generateContent")
-  
-  if (english == 0) {
-    role_system <- "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et de vos recherches, n'inventez pas de faits."
-  } else {
-    role_system <- "You will act as the economic agent you are told to be. Answer based on your knowledge in less than 200 words, and researches, do not invent facts."
-  }
-  
-  response <- POST(
-    url = paste0("https://generativelanguage.googleapis.com/v1beta/models/", model_query),
-    query = list(key = api_key),
-    content_type_json(),
-    encode = "json",
-    body = list(
-      contents = list(
-        list(parts = list(
-          list(text = role_system),  
-          # Simulation du message système pour cohérence avec chat
-          list(text = question)  # Message utilisateur
-        ))
-      ),
-      generationConfig = list(
-        temperature = temp_LLM,
-        maxOutputTokens = 200
-      )
-    )
-  )
-  
-  if (response$status_code > 200) {
-    stop(paste("Error - ", content(response)$error$message))
-  }
-  
-  candidates <- content(response)$candidates
-  outputs <- unlist(lapply(candidates, function(candidate) candidate$content$parts[[1]]$text))
-  
-  return(outputs)
-}
-
-# CLAUDE
-poser_question_CLAUDE <- function(question, api_key = cle_API) {
-  url <- url_LLM
-  
-  headers <- c(
-    "x-api-key" = api_key,
-    "anthropic-version" = "2023-06-01",   # faut-il faire varier suivant modèle?
-    "Content-Type" = "application/json"
-  )
-  
-  if (english == 0) {
-    role_system <- "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et de vos recherches, n'inventez pas de faits."
-  } else {
-    role_system <- "You will act as the economic agent you are told to be. Answer based on your knowledge in less than 200 words, and researches, do not invent facts."
-  }
-  
-  body <- list(
-    model = model_LLM,
-    max_tokens = 200,
-    temperature = temp_LLM,
-    system = role_system,
-    messages = list(
-      list(role = "user", content = question)
-    )
-  )
-  
-  response <- httr::POST(url, httr::add_headers(.headers = headers), body = toJSON(body, auto_unbox = TRUE))
-  
-  if (httr::status_code(response) == 200) {
-    return(content(response, "parsed")$content[[1]]$text)
-  } else {
-    return(paste("Erreur :", httr::status_code(response), httr::content(response, "text", encoding = "UTF-8")))
-  }
-}
-
-
-
-f_question <- get(paste0("poser_question_", LLM))
-
-
 
 
 #####################
@@ -254,12 +124,13 @@ for (dt in dates) {
   # BDF : output avec exécution parallèle
   bdf_outs <- future_lapply(seq_len(n_repro), function(i) {
     tryCatch({
-      resp <- f_question(q_BDF_text, api_key = cle_API)
-      list(ok = TRUE, text = resp)
-    }, error = function(e) {
-      list(ok = FALSE, text = paste0("ERROR: ", conditionMessage(e)))
-    })
-  })
+      resp <- chat_gemini$chat(q_BDF_text)
+      return(resp)}, error = function(e) {
+      message("API error: ", conditionMessage(e))
+      return(NA_character_)
+            })
+    
+  }, future.seed = TRUE)
   
   # Exctraction des éléments pertinents 
   histoires <- sapply(bdf_outs, function(x) x$text)
@@ -285,11 +156,12 @@ for (dt in dates) {
   # INSEE : même logique 
   insee_outs <- future_lapply(seq_len(n_repro), function(i) {
     tryCatch({
-      resp <- f_question(q_INSEE_text, api_key = cle_API)
-      list(ok = TRUE, text = resp)
-    }, error = function(e) {
-      list(ok = FALSE, text = paste0("ERROR: ", conditionMessage(e)))
-    })
+      resp <- chat_gemini$chat(q_INSEE_text)
+      return(resp)}, error = function(e) {
+        message("API error: ", conditionMessage(e))
+        return(NA_character_)
+      })
+    
   }, future.seed = TRUE)
   textes_insee <- sapply(insee_outs, function(x) x$text)
   parsed_insee <- lapply(textes_insee, function(txt) {

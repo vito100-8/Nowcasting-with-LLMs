@@ -258,7 +258,7 @@ get_all_last_insee_docs_by_type <- function(target_date, doc_type, folder_to_sea
 }
 
 #########
-#LLM_TS 
+#LLM_TS #A voir si on enlève
 #########
 
 #Prendre les données de la TS jusqu'à la date de prévision

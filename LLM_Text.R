@@ -1,10 +1,13 @@
 #### Script : Requêtes LLM (Gemini) avec PDF en pièce-jointe  ####
 
 rm(list = ls()) 
+source("LLM_functions.R")
 
 # Repertoire/ env
 setwd(dirname(getActiveDocumentContext()$path))
+
 here::i_am("LLM_Text.R")
+
 load_dot_env('.env')   
 
 ###################################
@@ -464,9 +467,10 @@ ggplot(bdf_text_long, aes(x = as.numeric(forecast), fill = source, color = sourc
 
 ############### A FAIRE #################
 
+# COPIER PROMPT SUR UN WORD AFIN DE LES COMPARER/REDIGER + COHERENCE FR/EN
+
 # NE PAS DONNER D EXEMPLE DANS LE PROMPT POUR NE PAS INDUIRE A CERTAINS RESULTATS (positifs notamment)
 
-#Donner : enquete bdf (la donner à BDF), insee (la donner à INSEE) + PIB ?
 #Ajouter de manière récursive les erreurs du LLM dans ses forecast en t-1 ?
 
 #vecteur des dates : veilles des EMC + rechercher l'emc le lendemain et le dernier enquête INSEE en date

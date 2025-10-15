@@ -154,7 +154,9 @@ MAE_df <- avg_error |>
   )
 
 
-###################
+####################################
+# Comparaison résultats (ISMA et Text)
+#####################################
 res_Text <- res_Text |>
   mutate(
     dates = Date,
@@ -192,7 +194,7 @@ final_df <- res_Text_wide |>
   left_join(
     res_ISMA |>
       mutate(dates = floor_date(dates, unit = "month")) |>
-      select(dates, forecast_M1:forecast_M3, PIB_PR),
+      select(dates, forecast_M1:forecast_M3, PIB),
     by = "dates"
   )
 
@@ -201,46 +203,25 @@ final_df <- final_df |>
 
 
 #### CALCUL MAE et RMSE
-forecast_text_cols <- c("forecast_mean_month1", "forecast_mean_month2","forecast_mean_month3")
-forecast_isma_cols <- c("forecast_M1", "forecast_M2","forecast_M3")
+MAE_M1 <- mean(abs(final_df$forecast_mean_month1 - final_df$PIB))
+MAE_M2 <- mean(abs(final_df$forecast_mean_month2 - final_df$PIB))
+MAE_M3 <- mean(abs(final_df$forecast_mean_month3 - final_df$PIB))
 
-# Fonction pour avoir un MAE par modèle
-compute_mae <- function(df, forecast_cols, actual_col) {
-  # Calcul pour chaque colonne
-  mae_per_col <- sapply(forecast_cols, function(col) {
-    mean(abs(df[[actual_col]] - df[[col]]), na.rm = TRUE)
-  })
-  # Moyenne sur toutes les colonnes 
-  mean(mae_per_col)
-}
+MAE_i_M1 <- mean(abs(final_df$forecast_M1 - final_df$PIB))
+MAE_i_M2 <- mean(abs(final_df$forecast_M2 - final_df$PIB))
+MAE_i_M3 <- mean(abs(final_df$forecast_M3 - final_df$PIB))
 
-# Fonction calcul RMSE
-compute_rmse <- function(df, forecast_cols, actual_col) {
-  # RMSE pour chaque colonne
-  rmse_per_col <- sapply(forecast_cols, function(col) {
-    sqrt(mean((df[[actual_col]] - df[[col]])^2, na.rm = TRUE))
-  })
-  # Moyenne sur toutes les colonnes
-  mean(rmse_per_col)
-}
 
-# MAE et RMSE de chaque modèle
-mae_text  <- compute_mae(final_df, forecast_text_cols, "PIB_PR")
-mae_isma  <- compute_mae(final_df, forecast_isma_cols, "PIB_PR")
+RMSE_M1 <- sqrt(mean((final_df$forecast_mean_month1 - final_df$PIB)^2))
+RMSE_M2 <- sqrt(mean((final_df$forecast_mean_month2 - final_df$PIB)^2))
+RMSE_M3 <- sqrt(mean((final_df$forecast_mean_month3 - final_df$PIB)^2))
 
-rmse_text <- compute_rmse(final_df, forecast_text_cols, "PIB_PR")
-rmse_isma <- compute_rmse(final_df, forecast_isma_cols, "PIB_PR")
+RMSE_i_M1 <- sqrt(mean((final_df$forecast_M1 - final_df$PIB)^2))
+RMSE_i_M2 <- sqrt(mean((final_df$forecast_M2 - final_df$PIB)^2))
+RMSE_i_M3 <- sqrt(mean((final_df$forecast_M3 - final_df$PIB)^2))
 
-# RECAP
-metrics_df <- data.frame(
-  MAE_Text  = mae_text,
-  MAE_ISMA  = mae_isma,
-  RMSE_Text = rmse_text,
-  RMSE_ISMA = rmse_isma
-)
-
-metrics_df
-
+recap_df <- data.frame(MAE_M1, MAE_M2, MAE_M3,MAE_i_M1,MAE_i_M2,MAE_i_M3, RMSE_M1, RMSE_M2, RMSE_M3, RMSE_i_M1, RMSE_i_M2, RMSE_i_M3)
+recap_df
 
 
 
