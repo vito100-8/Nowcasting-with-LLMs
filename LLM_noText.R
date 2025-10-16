@@ -2,6 +2,7 @@
 # Prévision récursive de croissance du PIB avec LLM sans document
 
 rm(list=ls())
+source("LLM_functions.R")
 
 # Répertoire de travail actif
 
@@ -20,6 +21,10 @@ load_dot_env('.env')
 english <- 1 # 1 si prompt en anglais
 temp_LLM <- 0.7  # Niveau de créativité des réponses 0.3/0.7/1.5 (castro-Leibovici)
 n_repro <- 2  # Nombre de prévisions générées par date
+sys_prompt <- ifelse(english == 1,
+                     "You will act as the economic agent you are told to be. Answer based on your knowledge and researches in less than 200 words, do not invent facts." ,
+                     "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots à l'aide de vos connaissances et de vos recherches, n'inventez pas de faits.")
+
 
 # Initialisation des dates
 dates <- as.Date(c("2012-01-03","2015-07-23", "2018-09-12","2023-03-15", "2023-06-15")) #à changer manuellement
@@ -40,7 +45,7 @@ chat_gemini <- chat_google_gemini( system_prompt = sys_prompt,
 
 #####################
 # QUESTIONS A POSER
-#####################"
+#####################
 
 
 if (english == 1) {
