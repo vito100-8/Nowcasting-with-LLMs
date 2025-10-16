@@ -58,13 +58,21 @@ if (english == 1) {
   prompt_template <- function(type, d, q_trim, y_prev) {
     boss <- current_boss(type, d)
     position <- ifelse(type == "BDF", "Governor of the Banque de France" , "Director General of INSEE")
+    current_quarter <- if (q_trim == 1){
+      "first"}
+    else if (q_trim == 2){
+        "second"
+        }else if (q_trim == 3){
+          "third"}else{
+            "fourth"}
+    
     
     paste0(
-      "Forget previous instructions and previous answers. You are ", boss, " (", position, 
-      "), and you are giving a speech about the economic outlook of France. Today is ",
+      "Forget previous instructions and previous answers. You are ", boss, ", ", position, 
+      ", and you are giving a speech about the economic outlook of France. Today is ",
       format(d, "%d %B %Y"), ". ",
       "Using only information available on or before ", format(d, "%d %B %Y"),
-      ", provide a numeric forecast (decimal percent with sign, e.g. +0.3) for French real GDP growth for Q", q_trim, " ", y_prev,
+      ", provide a numeric forecast (decimal percent with sign, e.g. +0.3) for French real GDP growth for the ", current_quarter, " quarter of ", y_prev,
       " and a confidence level (integer 0–100). Output EXACTLY in this format on a single line (no extra text):\n",
       "<forecast> (<confidence>)\nExample: +0.3 (80)\n",
       "Do NOT use any information published after ", format(d, "%d %B %Y"), "."
@@ -82,14 +90,22 @@ if (english == 1) {
   prompt_template <- function(type, d, q_trim, y_prev) {
     boss <- current_boss(type, d)
     position <- ifelse(type == "BDF","Gouverneur de la Banque de France", "Directeur Général de l'INSEE")  
+    trimestre_actuel <- if (q_trim == 1){
+      "premier"}
+    else if (q_trim == 2){
+      "second"
+    }else if (q_trim == 3){
+      "troisième"}else{
+        "quatrième"}
+    
     
     paste0(
       "Oubliez les instructions et les réponses précédentes. Vous êtes ", boss, ", ", position,
       ", qui prononce un discours sur les perspectives économiques de la France. Nous sommes le ",
       format(d, "%d %B %Y"), ". ",
       "En utilisant uniquement les informations disponibles au plus tard le ", format(d, "%d %B %Y"),
-      ", fournissez une prévision numérique (pourcentage décimal avec signe, ex. +0.3) de la croissance du PIB réel français pour le trimestre ",
-      q_trim, " ", y_prev,
+      ", fournissez une prévision numérique (pourcentage décimal avec signe, ex. +0.3) de la croissance du PIB réel français pour le ",
+      trimestre_actuel, " trimestre ", y_prev,
       " et un niveau de confiance (entier 0-100). Renvoyez EXACTEMENT sur une seule ligne (aucun texte supplémentaire) :\n",
       "<prévision> (<confiance>)\nExemple : +0.3 (80)\n",
       "N'utilisez AUCUNE information publiée après le ", format(d, "%d %B %Y"), "."
@@ -112,7 +128,7 @@ for (dt in dates) {
   year_current <- as.integer(format(current_date, "%Y"))
   trimestre_index <- if (mois_index %in% c(1,11,12)) 4 else if (mois_index %in% 2:4) 1 else if (mois_index %in% 5:7) 2 else 3
   year_prev <- if (mois_index == 1 && trimestre_index == 4) year_current - 1 else year_current
-  
+
   for (type in c("BDF", "INSEE")) {
     
     q_text <- prompt_template(type, current_date, trimestre_index, year_prev)
