@@ -20,15 +20,15 @@ load_dot_env('.env')
 #Paramètres généraux
 english <- 1 # 1 si prompt en anglais
 temp_LLM <- 0.7  # Niveau de créativité des réponses 0.3/0.7/1.5 (castro-Leibovici)
-n_repro <- 2  # Nombre de prévisions générées par date
+n_repro <- 2  # Nombre de prévisions générées par date*
 sys_prompt <- ifelse(english == 1,
                      "You will act as the economic agent you are told to be. Answer based on your knowledge and researches in less than 200 words, do not invent facts." ,
                      "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots à l'aide de vos connaissances et de vos recherches, n'inventez pas de faits.")
 
 
 # Initialisation des dates
-dates <- as.Date(c("2012-01-03","2015-07-23", "2018-09-12","2023-03-15", "2023-06-15")) #à changer manuellement
-
+dates <- as.Date(c("2012-01-03")) #à changer manuellement
+dates <- df_date #utiliser le même df que dans Text (nécessaire de l'avoir déclaré avant)
 
 # API Key (pour ellmer on utilise API_KEY_GEMINI)
 cle_API <- Sys.getenv("API_KEY_GEMINI")
@@ -50,162 +50,144 @@ chat_gemini <- chat_google_gemini( system_prompt = sys_prompt,
 
 if (english == 1) {
   try(Sys.setlocale("LC_TIME", "English"), silent = TRUE)
-  #try(Sys.setlocale("LC_TIME", "en_US.UTF-8"), silent = TRUE)
-  prompt_template_BDF <- function(d, q_trim, y_prev) {
+  
+  #Renvoie le bon dirigeant
+  current_boss <- function(type, d) {
+    if (type == "BDF") return(BDF_current_boss(d))
+    if (type == "INSEE") return(INSEE_current_boss(d))
+  }
+  
+  # 
+  prompt_template <- function(type, d, q_trim, y_prev) {
+    boss <- current_boss(type, d)
+    position <- ifelse(type == "BDF", "Governor of the Banque de France" , "Director General of INSEE")
+    current_quarter <- if (q_trim == 1){
+      "first"}
+    else if (q_trim == 2){
+      "second"
+    }else if (q_trim == 3){
+      "third"}else{
+        "fourth"}
+    
+    
     paste0(
-      "Forget previous instructions and previous answers. You are ", BDF_current_boss(d), " (Governor of the Banque de France), and you are giving a speech on France economic outlook. Today is ",
+      "Forget the previous instructions and answers. You are ", boss, ", ", position, 
+      ", and you are giving a speech about the economic outlook of France. Today is ",
       format(d, "%d %B %Y"), ". ",
-      "Using only information that was available on or before ", 
-      format(d, "%d %B %Y"), 
-      ", provide a numeric forecast (decimal percent with sign, e.g. +0.3) for French real GDP growth for Q", q_trim, " ", y_prev, 
-      " and a confidence level (integer 0-100). Output EXACTLY in this format on a single line (no extra text):\n",
-      "<forecast> (<confidence>)\n",
-      "Example: +0.3 (80)\n",
+      "Using only information that was available on or before ", format(d, "%d %B %Y"),
+      ", provide a numeric forecast (decimal percent with sign, e.g., +0.3) for French real GDP growth in the ", current_quarter, " quarter of ", y_prev,
+      " and a confidence level (integer 0–100). Output EXACTLY in this format on a single line (no extra text):\n",
+      "<forecast> (<confidence>)\nExample: +0.3 (80)\n",
       "Do NOT use any information published after ", format(d, "%d %B %Y"), "."
     )
   }
-  prompt_template_INSEE <- function(d, q_trim, y_prev) {
-    paste0(
-      "Forget previous instructions and previous answers. You are ", INSEE_current_boss(d), ", Director general of INSEE, and you are giving a speech on France economic outlook. Today is ",
-      format(d, "%d %B %Y"), ". ",
-      "Using only information that was available on or before ", format(d, "%d %B %Y"), 
-      ", provide a numeric forecast (decimal percent with sign, e.g. +0.3) for French real GDP growth for Q", q_trim, " ", y_prev, 
-      " and a confidence level (integer 0-100). Output EXACTLY in this format on a single line (no extra text):\n",
-      "<forecast> (<confidence>)\n",
-      "Example: +0.3 (80)\n",
-      "Do NOT use any information published after ", format(d, "%d %B %Y"), ".")
-  }
+  
 } else {
   try(Sys.setlocale("LC_TIME", "French"), silent = TRUE)
-  #try(Sys.setlocale("LC_TIME", "fr_FR.UTF-8"), silent = TRUE)
-  prompt_template_BDF <- function(d, q_trim, y_prev) {
-    paste0(
-      "Oubliez les instructions et les réponses précédentes. Vous êtes ", BDF_current_boss(d), ", le Gouverneur de la Banque de France, qui prononce un discours sur les perspectives économiques de la France. Nous sommes le ",
-      format(d, "%d %B %Y"), ". ",
-      "En utilisant uniquement les informations disponibles au plus tard le ", format(d, "%d %B %Y"),
-      ", fournissez une prévision numérique (pourcentage décimal avec signe, ex. +0.3) pour la croissance du PIB réel français pour le trimestre ", q_trim, " ", y_prev,
-      " et un niveau de confiance (entier 0-100). Renvoyez EXACTEMENT sur une seule ligne :\n",
-      "<prévision> (<confiance>)\n",
-      "Exemple : +0.3 (80)\n",
-      "N'utilisez AUCUNE information publiée après le ", format(d, "%d %B %Y"), "."
-    )
+  
+  current_boss <- function(type, d) {
+    if (type == "BDF") return(BDF_current_boss(d))
+    if (type == "INSEE") return(INSEE_current_boss(d))
   }
-  prompt_template_INSEE <- function(d, q_trim, y_prev) {
+  
+  prompt_template <- function(type, d, q_trim, y_prev) {
+    boss <- current_boss(type, d)
+    position <- ifelse(type == "BDF","Gouverneur de la Banque de France", "Directeur Général de l'INSEE")  
+    trimestre_actuel <- if (q_trim == 1){
+      "premier"}
+    else if (q_trim == 2){
+      "second"
+    }else if (q_trim == 3){
+      "troisième"}else{
+        "quatrième"}
+    
+    
     paste0(
-      "Oubliez les instructions et les réponses précédentes. Vous êtes ", INSEE_current_boss(d), ", Directeur Général de l'INSEE, qui prononce un discours sur les perspectives économiques de la France. Nous sommes le ",
+      "Oubliez les instructions et les réponses précédentes. Vous êtes ", boss, ", ", position,
+      ", qui prononce un discours sur les perspectives économiques de la France. Nous sommes le ",
       format(d, "%d %B %Y"), ". ",
       "En utilisant uniquement les informations disponibles au plus tard le ", format(d, "%d %B %Y"),
-      ", fournissez une prévision numérique (pourcentage décimal avec signe, ex. +0.3) pour la croissance du PIB réel français pour le trimestre ", q_trim, " ", y_prev,
-      " et un niveau de confiance (entier 0-100). Renvoyez EXACTEMENT sur une seule ligne :\n",
-      "<prévision> (<confiance>)\n",
-      "Exemple : +0.3 (80)\n",
+      ", fournissez une prévision numérique (pourcentage décimal avec signe, ex. +0.3) de la croissance du PIB réel français pour le ",
+      trimestre_actuel, " trimestre ", y_prev,
+      " et un niveau de confiance (entier 0-100). Renvoyez EXACTEMENT sur une seule ligne (aucun texte supplémentaire) :\n",
+      "<prévision> (<confiance>)\nExemple : +0.3 (80)\n",
       "N'utilisez AUCUNE information publiée après le ", format(d, "%d %B %Y"), "."
     )
   }
 }
 
 #################
-#BOUCLE PRINCIPALE
+# BOUCLE PRINCIPALE
 ##################
 
-results_BDF <- list()
-results_INSEE <- list()
+results_all <- list()
 row_id <- 1
 
 t1 <- Sys.time()
-#total <- length(dates)
 
 for (dt in dates) {
-  current_date <- as.Date(dt)  # Pour bien avoir des dates
+  current_date <- as.Date(dt)
   mois_index <- as.integer(format(current_date, "%m"))
   year_current <- as.integer(format(current_date, "%Y"))
   trimestre_index <- if (mois_index %in% c(1,11,12)) 4 else if (mois_index %in% 2:4) 1 else if (mois_index %in% 5:7) 2 else 3
   year_prev <- if (mois_index == 1 && trimestre_index == 4) year_current - 1 else year_current
   
-  # Générer prompts
-  q_BDF_text <- prompt_template_BDF(current_date, trimestre_index, year_prev)
-  q_INSEE_text <- prompt_template_INSEE(current_date, trimestre_index, year_prev)
-  
-  # BDF : output avec exécution parallèle
-  bdf_outs <- future_lapply(seq_len(n_repro), function(i) {
-    tryCatch({
-      resp <- chat_gemini$chat(q_BDF_text)
-      return(resp)}, error = function(e) {
-      message("API error: ", conditionMessage(e))
-      return(NA_character_)
-            })
+  for (type in c("BDF", "INSEE")) {
     
-  }, future.seed = TRUE)
-  
-  # Exctraction des éléments pertinents 
-  histoires <- sapply(bdf_outs, function(x) x$text)
-  parsed_list <- lapply(histoires, function(txt) {
-    # extraire forecast, niveau de confiance et une version raw
-    m <- regmatches(txt, regexec("([+-]?\\d+\\.?\\d*)\\s*\\(\\s*(\\d{1,3})\\s*\\)", txt))
-    if (length(m[[1]]) >= 3) {
-      list(forecast = as.numeric(m[[1]][2]), confidence = as.integer(m[[1]][3]), raw = txt)
-    } else {
-      list(forecast = NA_real_, confidence = NA_integer_, raw = txt)
-    }
-  })
-  #  1 colonne par repro et par nombre de valeurs renvoyées (ici 3 valeurs)
-  df_bdf <- data.frame(Date = as.character(current_date), Prompt = q_BDF_text, stringsAsFactors = FALSE)
-  for (i in seq_len(n_repro)) {
-    df_bdf[[paste0("forecast_", i)]]  <- parsed_list[[i]]$forecast
-    df_bdf[[paste0("confidence_", i)]] <- parsed_list[[i]]$confidence
-    df_bdf[[paste0("answer_", i)]]        <- parsed_list[[i]]$raw
+    q_text <- prompt_template(type, current_date, trimestre_index, year_prev)
     
-  }
-  results_BDF[[row_id]] <- df_bdf
-  
-  # INSEE : même logique 
-  insee_outs <- future_lapply(seq_len(n_repro), function(i) {
-    tryCatch({
-      resp <- chat_gemini$chat(q_INSEE_text)
-      return(resp)}, error = function(e) {
+    outs <- future_lapply(seq_len(n_repro), function(i) {
+      tryCatch({
+        resp <- chat_gemini$chat(q_text)
+        return(resp)
+      }, error = function(e) {
         message("API error: ", conditionMessage(e))
         return(NA_character_)
       })
+    }, future.seed = TRUE)
     
-  }, future.seed = TRUE)
-  textes_insee <- sapply(insee_outs, function(x) x$text)
-  parsed_insee <- lapply(textes_insee, function(txt) {
-    m <- regmatches(txt, regexec("([+-]?\\d+\\.?\\d*)\\s*\\(\\s*(\\d{1,3})\\s*\\)", txt))
-    if (length(m[[1]]) >= 3) {
-      list(forecast = as.numeric(m[[1]][2]), confidence = as.integer(m[[1]][3]), raw = txt)
-    } else {
-      list(forecast = NA_real_, confidence = NA_integer_, raw = txt)
+    textes <- unlist(outs)
+    parsed <- lapply(textes, function(txt) {
+      m <- regmatches(txt, regexec("([+-]?\\d+\\.?\\d*)\\s*\\(\\s*(\\d{1,3})\\s*\\)", txt))
+      if (length(m[[1]]) >= 3) {
+        list(forecast = as.numeric(m[[1]][2]), confidence = as.integer(m[[1]][3]), raw = txt)
+      } else {
+        list(forecast = NA_real_, confidence = NA_integer_, raw = txt)
+      }
+    })
+    
+    df_tmp <- data.frame(
+      Date = as.character(current_date),
+      Type = type,
+      Prompt = q_text,
+      stringsAsFactors = FALSE
+    )
+    
+    for (i in seq_len(n_repro)) {
+      df_tmp[[paste0("forecast_", i)]]  <- parsed[[i]]$forecast
+      df_tmp[[paste0("confidence_", i)]] <- parsed[[i]]$confidence
+      df_tmp[[paste0("answer_", i)]]     <- parsed[[i]]$raw
     }
-  })
-  
-  df_insee <- data.frame(Date = as.character(current_date),Prompt = q_INSEE_text, stringsAsFactors = FALSE)
-  for (i in seq_len(n_repro)) {
-    df_insee[[paste0("forecast_", i)]]  <- parsed_insee[[i]]$forecast
-    df_insee[[paste0("confidence_", i)]] <- parsed_insee[[i]]$confidence
-    df_insee[[paste0("answer_", i)]]        <- parsed_insee[[i]]$raw
+    
+    results_all[[row_id]] <- df_tmp
+    row_id <- row_id + 1
+    Sys.sleep(0.5)
   }
-  results_INSEE[[row_id]] <- df_insee
-  
-  row_id <- row_id + 1
-  Sys.sleep(0.5)
 }
 
-# Combiner en dataframes finaux (1 ligne par date)
-df_results_BDF <- do.call(rbind, results_BDF)
-df_results_INSEE <- do.call(rbind, results_INSEE)
+# Combine final dataframe
+df_results <- do.call(rbind, results_all)
 
-# Sauvegarder dans une feuille excel
-nom_fichier_BDF <- paste0("resultats_BDF_", LLM, "_prompt.xlsx")
-write.xlsx(df_results_BDF, file = nom_fichier_BDF, sheetName = 'prevision', rowNames = FALSE)
-cat("Les résultats pour la question BDF ont été sauvegardés dans le fichier :", nom_fichier_BDF, "\n")
+# Sauvegarde unique
+nom_fichier <- paste0("resultats_noText.xlsx")
+write.xlsx(df_results, file = nom_fichier, sheetName = 'prevision', rowNames = FALSE)
 
-nom_fichier_INSEE <- paste0("resultats_INSEE_", LLM, "_prompt.xlsx")
-write.xlsx(df_results_INSEE, file = nom_fichier_INSEE, sheetName = 'prevision', rowNames = FALSE)
-cat("Les résultats pour la question INSEE ont été sauvegardés dans le fichier :", nom_fichier_INSEE, "\n")
+cat("Les résultats (BDF et INSEE) ont été sauvegardés dans le fichier :", nom_fichier, "\n")
 
 t2 <- Sys.time()
 diff(range(t1,t2))
 
+#CAS BENCHMARK : économique expert et non pas qql en particulier
 
 ##################
 #Stats Descriptives
