@@ -24,8 +24,9 @@ document_folder_BDF <- "docEMC_clean"
 document_folder_INSEE <- "INSEE_Scrap"
 
 # dates (exemple)
-dates <- as.Date(c("2023-03-01", "2023-06-01")) # format aaaa-mm-jj
-
+df_date <- as.Date(c("2023-03-01", "2023-06-01")) # format aaaa-mm-jj
+#Dates utilisées
+df_date <- read_xlsx(here("dates_prev.xlsx"))
 
 # API Key (pour ellmer on utilise API_KEY_GEMINI)
 cle_API <- Sys.getenv("API_KEY_GEMINI")
