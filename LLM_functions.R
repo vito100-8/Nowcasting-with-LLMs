@@ -288,3 +288,62 @@ get_last_ts <-function(target_date, df_ts){
   return(data_ts)
 }
 
+################################
+# FONCTION LLM + ECONOMETRIE
+#################################
+
+#Fonction moyenne arithmétique
+weight_avg <- function(pred_eco, pred_LLM) {
+  nowcast <- 0.5*pred_eco + 0.5*pred_LLM
+  return(list(
+    nowcast = nowcast,
+  ))
+}
+
+#Fonction inverse des erreurs moyennes quadratiques
+inversed_weight <- function(pred_eco, pred_LLM, error_eco, error_LLM) {
+    
+    # Calcul des MSE pour chaque modèle
+    MSE_eco <- mean(error_eco^2, na.rm = TRUE)
+    MSE_LLM <- mean(error_LLM^2, na.rm = TRUE)
+  
+  
+    # Calcul des poids inverses du MSE
+    weight_raw <- c(1 / MSE_eco, 1 / MSE_LLM)
+    weight <- weight_raw / sum(weight_raw)  # normalisation pour avoir w1 + w2 = 1
+    
+    # Résultat du nowcast
+    nowcast <- weight[1] * pred_eco + weight[2] * pred_LLM
+    
+    # Retourne une liste claire
+    return(list(
+      nowcast = nowcast,
+      weight_eco = w[1],
+      weight_LLM = w[2]
+    ))
+  }
+  
+#Fonction méthode Bates-Granger
+BG_weight <- function(pred_eco, pred_LLM, error_eco, error_LLM) {
+  
+    # Variances et covariance des erreurs
+    var_eco <- var(error_eco, na.rm = TRUE)
+    var_LLM <- var(error_LLM, na.rm = TRUE)
+    covar <- cov(error_eco, error_LLM, use = "complete.obs")
+    
+    # Calcul des poids Bates & Granger (type BG_comb)
+    weight_eco <- (var_LLM - covar) / (var_eco + var_LLM - 2 * covar)
+    weight_LLM <- 1 - w_eco
+    
+    # Nowcast 
+    nowcast <- weight_eco * pred_eco + weight_LLM * pred_LLM
+    
+    return(list(
+      nowcast = nowcast,
+      weights = c(Econométrie = weight_eco, LLM = weight_LLM),
+      covariance = covar
+    ))
+  }
+  
+  
+
