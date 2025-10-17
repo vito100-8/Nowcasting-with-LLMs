@@ -27,8 +27,10 @@ sys_prompt <- ifelse(english == 1,
 
 
 # Initialisation des dates
-dates <- as.Date(c("2012-01-03")) #à changer manuellement
-dates <- df_date #utiliser le même df que dans Text (nécessaire de l'avoir déclaré avant)
+df_date <- as.Date(c("2012-01-03")) #POUR TESTER : à changer manuellement
+
+#Dates utilisées
+df_date <- read_xlsx(here("dates_prev.xlsx"))
 
 # API Key (pour ellmer on utilise API_KEY_GEMINI)
 cle_API <- Sys.getenv("API_KEY_GEMINI")
@@ -125,7 +127,7 @@ row_id <- 1
 
 t1 <- Sys.time()
 
-for (dt in dates) {
+for (dt in df_date) {
   current_date <- as.Date(dt)
   mois_index <- as.integer(format(current_date, "%m"))
   year_current <- as.integer(format(current_date, "%Y"))

@@ -23,9 +23,10 @@ sys_prompt <- ifelse(english == 1,
                      "You will act as the economic agent you are told to be. Answer based on your knowledge and the document provided in less than 200 words, do not invent facts." ,
                      "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et du document fourni, n'inventez pas de faits.")
 
-# Vecteur de dates
-dates_used <- as.Date(df_date[[1]])
+# Vecteur de dates en exemple
 dates_used <- as.Date(c("2015-02-08"))
+#Dates utilisées
+dates_used <- read_xlsx(here("dates_prev.xlsx"))
 
 # API Key (pour ellmer on utilise API_KEY_GEMINI)
 cle_API <- Sys.getenv("API_KEY_GEMINI")
@@ -162,15 +163,15 @@ dir.create("Indicateurs_BDF", showWarnings = FALSE)
 results_uploads_BDF <- list()
 row_id_BDF <- 1
 
-for (d in dates_used) {
-  
+for (d in dates_used) { #si on utilise uniquement un vecteur de date en texte
+#for (d in dates_used$`Date Prevision`) {  ### si on utilise tout le df
   # Tronquage
   df_temp <- df_enq_BDF |> 
     filter(dates <= as.Date(d))
   
   current_date <- as.Date(d)
   # Nom du fichier Excel
-  file_name <- paste0("date_max_", format(current_date, "%Y%m%d"), ".csv")
+  file_name <- paste0("date_max_BDF_", format(current_date, "%Y%m%d"), ".csv")
   
   # Sauvegarde locale en CSV
   write.csv(df_temp, file = file.path("Indicateurs_BDF", file_name), 
@@ -251,79 +252,81 @@ results_uploads_INSEE <- list()
 row_id_INSEE <- 1
 
 for (d in dates_used) {
-  
+  #for (d in dates_used$`Date Prevision`) { #idem que pour BDF  
   # Tronquage
   df_temp <- df_enq_INSEE |> 
-    filter(dates <= d)
-  current_date <- as.Date(d)
-  # Nom du fichier Excel
-  file_name <- paste0("Indicateurs_INSEE/date_max_", format(current_date, "%Y%m%d"), ".csv")
+    filter(dates <= as.Date(d))
   
-  # Sauvegarde locale
-  write.csv(df_temp, file = file_name, 
-            row.names = FALSE, fileEncoding = "UTF-8"))
-  cat("Fichier créé :", file_name, "\n")
+  current_date <- as.Date(d)
+  # Nom du fichier CSV
+  file_name <- paste0("date_max_INSEE_", format(current_date, "%Y%m%d"), ".csv")
+  
+  # Sauvegarde locale en CSV
+  write.csv(df_temp, file = file.path("Indicateurs_INSEE", file_name), 
+            row.names = FALSE, fileEncoding = "UTF-8")
+  cat("Fichier CSV créé :", file_name, "\n")
   
   # Récupération du chemin complet
   input_doc <- normalizePath(file.path("Indicateurs_INSEE", file_name), 
                              winslash = "/", mustWork = TRUE)
   
-  
-  #Upload le doc
+  # Upload du document
   uploaded_doc <- google_upload(
     input_doc,
-    base_url = "https://generativelanguage.googleapis.com/",
     api_key = cle_API
   )
-    # Initialisation des dates
   
-    mois_index <- as.integer(format(current_date, "%m"))
-    year_current <- as.integer(format(current_date, "%Y"))
-    trimestre_index <- if (mois_index %in% c(1,11,12)) 4 else if (mois_index %in% 2:4) 1 else if (mois_index %in% 5:7) 2 else 3
-    year_prev <- if (mois_index == 1 && trimestre_index == 4) year_current - 1 else year_current
-    prompt_text <- prompt_template_INSEE(current_date, trimestre_index ,
-                                         year_prev)
-    
-    # appel à Gemini en intégrant le document voulu
-    out_list <- future_lapply(seq_len(n_repro), function(i) {
-      tryCatch({
-        resp <- chat_gemini$chat(uploaded_doc, prompt_text)
-        return(resp)}, error = function(e) {
-          message("API error: ", conditionMessage(e))
-          return(NA_character_)
-        })
-      
-    }, future.seed = TRUE)
-    
-    # Parse les résultats
-    histoires <- sapply(out_list, function(x) {if (is.list(x) && !is.null(x$text)) {
+  # Initialisation des dates
+  mois_index <- as.integer(format(current_date, "%m"))
+  year_current <- as.integer(format(current_date, "%Y"))
+  trimestre_index <- if (mois_index %in% c(1,11,12)) 4 else if (mois_index %in% 2:4) 1 else if (mois_index %in% 5:7) 2 else 3
+  year_prev <- if (mois_index == 1 && trimestre_index == 4) year_current - 1 else year_current
+  prompt_text <- prompt_template_INSEE(current_date, trimestre_index, year_prev)
+  
+  # Appel à Gemini en intégrant le document voulu
+  out_list <- future_lapply(seq_len(n_repro), function(i) {
+    tryCatch({
+      resp <- chat_gemini$chat(uploaded_doc, prompt_text)
+      return(resp)
+    }, error = function(e) {
+      message("API error: ", conditionMessage(e))
+      return(NA_character_)
+    })
+  }, future.seed = TRUE)
+  
+  # Parse les résultats
+  histoires <- sapply(out_list, function(x) {
+    if (is.list(x) && !is.null(x$text)) {
       return(x$text)
     } else if (is.character(x)) {
       return(x)
     } else {
       return(NA_character_)
-    }})
-    parsed_list <- lapply(histoires, function(txt) {
-      if (is.null(txt) || length(txt) == 0) return(list(forecast = NA_real_, confidence = NA_integer_, raw = NA_character_))
-      m <- regmatches(txt, regexec(forecast_confidence_pattern, txt))
-      if (length(m[[1]]) >= 3) {
-        list(forecast = as.numeric(m[[1]][2]), confidence = as.integer(m[[1]][3]), raw = txt)
-      } else {
-        list(forecast = NA_real_, confidence = NA_integer_, raw = txt)
-      }
-    })
-    
-    #Df des résultats
-    df_excel <- data.frame(Date = as.character(current_date), Prompt = prompt_text, stringsAsFactors = FALSE)
-    for (i in seq_len(n_repro)) {
-      df_excel_INSEE[[paste0("forecast_", i)]]  <- parsed_list[[i]]$forecast
-      df_excel_INSEE[[paste0("confidence_", i)]] <- parsed_list[[i]]$confidence
-      df_excel_INSEE[[paste0("answer_", i)]] <- parsed_list[[i]]$raw
     }
-    
-    results_uploads_INSEE[[row_id_INSEE]] <- df_excel_INSEE
-    row_id_INSEE <- row_id_INSEE + 1
-    Sys.sleep(0.5)
+  })
+  
+  parsed_list <- lapply(histoires, function(txt) {
+    if (is.null(txt) || length(txt) == 0) 
+      return(list(forecast = NA_real_, confidence = NA_integer_, raw = NA_character_))
+    m <- regmatches(txt, regexec(forecast_confidence_pattern, txt))
+    if (length(m[[1]]) >= 3) {
+      list(forecast = as.numeric(m[[1]][2]), confidence = as.integer(m[[1]][3]), raw = txt)
+    } else {
+      list(forecast = NA_real_, confidence = NA_integer_, raw = txt)
+    }
+  })
+  
+  # Dataframe des résultats
+  df_excel_INSEE <- data.frame(Date = as.character(current_date), Prompt = prompt_text, stringsAsFactors = FALSE)
+  for (i in seq_len(n_repro)) {
+    df_excel_INSEE[[paste0("forecast_", i)]]  <- parsed_list[[i]]$forecast
+    df_excel_INSEE[[paste0("confidence_", i)]] <- parsed_list[[i]]$confidence
+    df_excel_INSEE[[paste0("answer_", i)]] <- parsed_list[[i]]$raw
+  }
+  
+  results_uploads_INSEE[[row_id_INSEE]] <- df_excel_INSEE
+  row_id_INSEE <- row_id_INSEE + 1
+  Sys.sleep(0.5)
 }
 
 # Stockage + document résultat
@@ -336,20 +339,3 @@ write.xlsx(df_excel_INSEE, file = "Indicateurs_INSEE/upload_summary.xlsx", overw
 
 
 
-
-
-
-
-
-#############################################################
-
-#Que faire des données ISMA/PIB ? Les ajouter aux enquêtes ? 
-
-#Reorganiser BDF de sorte a rematch toutes les dates !
-#Ajouter les prévisions BDF
-
-##### Mettre les anciennes prévisions des enquêtes (EMC) , réflechir comment faire pour les prev de l'INSEE
-#### VS erreur du LLM
-
-
-#EI = M - 1 (si prévision en janvier on prend jusqu'en décembre)

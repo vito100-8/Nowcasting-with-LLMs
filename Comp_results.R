@@ -225,11 +225,3 @@ recap_df
 
 
 
-##################
-# RAJOUTER UN MCS AVEC ISMA AUSSI ?
-
-#prendre une mediane plutot
-#prendre une prévision moyenne des forecasts LLM ET Econometrique
-#Forme simple : simple moy arithmétique
-# Sinon : moyenne qui pondère selon les performances récentes(Bate-Granger)/ poids inverse de l'erreur carré
-#Faire une fonction pour généraliser
