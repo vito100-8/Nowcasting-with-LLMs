@@ -187,7 +187,7 @@ cat("Les résultats (BDF et INSEE) ont été sauvegardés dans le fichier :", no
 t2 <- Sys.time()
 diff(range(t1,t2))
 
-#CAS BENCHMARK : économique expert et non pas qql en particulier
+
 
 ##################
 #Stats Descriptives
@@ -385,3 +385,5 @@ print(diff_langue_moy)
 
 
 
+######################################
+#CAS BENCHMARK : économique expert et non pas qql en particulier

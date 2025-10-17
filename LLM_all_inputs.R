@@ -456,6 +456,6 @@ ggplot(both_text_long, aes(x = as.numeric(forecast), fill = source, color = sour
 ########### TS itérative comme dans LLM_excel
 
 
-### VA ETRE TRES GOURMAND EN CREDIT
-
+### all = derniere enquête + csv (itératif)
+#### autre script : 1- 3 nombre roulant d'enquête selon trimestre de prévison 
 

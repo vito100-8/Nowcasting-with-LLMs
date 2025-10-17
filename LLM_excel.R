@@ -7,7 +7,7 @@ source("LLM_functions.R")
 # Repertoire/ env
 setwd(dirname(getActiveDocumentContext()$path))
 
-here::i_am("LLM_Text.R")
+here::i_am("LLM_excel.R")
 
 load_dot_env('.env')   
 
@@ -25,7 +25,7 @@ sys_prompt <- ifelse(english == 1,
 
 # Vecteur de dates
 dates_used <- as.Date(df_date[[1]])
-
+dates_used <- as.Date(c("2015-02-08"))
 
 # API Key (pour ellmer on utilise API_KEY_GEMINI)
 cle_API <- Sys.getenv("API_KEY_GEMINI")
@@ -48,14 +48,14 @@ chat_gemini <- chat_google_gemini( system_prompt = sys_prompt,
 
 df_PIB <- read_xlsx("Data_BDF_INSEE.xlsx", sheet = "trimestriel")
 df_ISMA <- read_xlsx("Data_BDF_INSEE.xlsx", sheet = "mensuel ISMA")
-df_enq_BDF <- read_xlsx("Data_BDF_INSEE.xlsx", sheet = "ENQ_BDF")
+df_enq_BDF <- read.xlsx("Data_BDF_INSEE.xlsx", sheet = "ENQ_BDF")
 df_enq_INSEE <- read_xlsx("Data_BDF_INSEE.xlsx", sheet = "ENQ_INSEE")
 
 #Nettoyage de df_enq_BDF
 
 df_enq_BDF <- df_enq_BDF |> 
   slice(6:433) |> 
-  mutate(dates = `Titre :...1`, , .keep = "unused") |>
+  mutate(dates = `Titre.:`, , .keep = "unused") |>
   select(dates, everything())
 
 
@@ -153,6 +153,8 @@ if (english == 1) {
 #############################################
 
 
+# Forecast regex pattern qui sera appelé dans la boucle pour parse
+forecast_confidence_pattern <- "([+-]?\\d+\\.?\\d*)\\s*\\(\\s*(\\d{1,3})\\s*\\)"
 
 # BDF #
 dir.create("Indicateurs_BDF", showWarnings = FALSE)
@@ -164,25 +166,29 @@ for (d in dates_used) {
   
   # Tronquage
   df_temp <- df_enq_BDF |> 
-    filter(dates <= d)
+    filter(dates <= as.Date(d))
   
-  # Nom du fichier Excel
-  file_name <- paste0("Indicateurs_BDF/date_max_", format(d, "%Y%m%d"), ".xlsx")
-  
-  # Sauvegarde locale
-  write.xlsx(df_temp, file = file_name, overwrite = TRUE)
-  cat("Fichier créé :", file_name, "\n")
-  
-  #Uploader le doc
-  upload_file <- path_from_docname(file_name, folder = "Indicateurs_BDF")
-  
-  uploaded_doc <- google_upload(
-    upload_file,
-    base_url = "https://generativelanguage.googleapis.com/",
-    api_key = cle_API
-  )
-  # Initialisation des dates
   current_date <- as.Date(d)
+  # Nom du fichier Excel
+  file_name <- paste0("date_max_", format(current_date, "%Y%m%d"), ".csv")
+  
+  # Sauvegarde locale en CSV
+  write.csv(df_temp, file = file.path("Indicateurs_BDF", file_name), 
+            row.names = FALSE, fileEncoding = "UTF-8")
+  cat("Fichier CSV créé :", file_name, "\n")
+  
+  # Récupération du chemin complet
+  input_doc <- normalizePath(file.path("Indicateurs_BDF", file_name), 
+                             winslash = "/", mustWork = TRUE)
+  
+  
+ 
+  uploaded_doc <- google_upload(
+    input_doc,
+    api_key = cle_API) 
+  
+  # Initialisation des dates
+  
   mois_index <- as.integer(format(current_date, "%m"))
   year_current <- as.integer(format(current_date, "%Y"))
   trimestre_index <- if (mois_index %in% c(1,11,12)) 4 else if (mois_index %in% 2:4) 1 else if (mois_index %in% 5:7) 2 else 3
@@ -227,7 +233,7 @@ for (d in dates_used) {
     df_excel_BDF[[paste0("answer_", i)]] <- parsed_list[[i]]$raw
   }
   
-  results_uploads_BDF[[row_id_INSEE]] <- df_excel_BDF
+  results_uploads_BDF[[row_id_BDF]] <- df_excel_BDF
   row_id_BDF <- row_id_BDF + 1
   Sys.sleep(0.5)
 }
@@ -249,24 +255,28 @@ for (d in dates_used) {
   # Tronquage
   df_temp <- df_enq_INSEE |> 
     filter(dates <= d)
-  
+  current_date <- as.Date(d)
   # Nom du fichier Excel
-  file_name <- paste0("Indicateurs_INSEE/date_max_", format(d, "%Y%m%d"), ".xlsx")
+  file_name <- paste0("Indicateurs_INSEE/date_max_", format(current_date, "%Y%m%d"), ".csv")
   
   # Sauvegarde locale
-  write.xlsx(df_temp, file = file_name, overwrite = TRUE)
+  write.csv(df_temp, file = file_name, 
+            row.names = FALSE, fileEncoding = "UTF-8"))
   cat("Fichier créé :", file_name, "\n")
   
-  #Uploader le doc
-  upload_file <- path_from_docname(file_name, folder = "Indicateurs_INSEE")
+  # Récupération du chemin complet
+  input_doc <- normalizePath(file.path("Indicateurs_INSEE", file_name), 
+                             winslash = "/", mustWork = TRUE)
   
+  
+  #Upload le doc
   uploaded_doc <- google_upload(
-    upload_file,
+    input_doc,
     base_url = "https://generativelanguage.googleapis.com/",
     api_key = cle_API
   )
     # Initialisation des dates
-    current_date <- as.Date(d)
+  
     mois_index <- as.integer(format(current_date, "%m"))
     year_current <- as.integer(format(current_date, "%Y"))
     trimestre_index <- if (mois_index %in% c(1,11,12)) 4 else if (mois_index %in% 2:4) 1 else if (mois_index %in% 5:7) 2 else 3
@@ -335,6 +345,8 @@ write.xlsx(df_excel_INSEE, file = "Indicateurs_INSEE/upload_summary.xlsx", overw
 
 #Que faire des données ISMA/PIB ? Les ajouter aux enquêtes ? 
 
+#Reorganiser BDF de sorte a rematch toutes les dates !
+#Ajouter les prévisions BDF
 
 ##### Mettre les anciennes prévisions des enquêtes (EMC) , réflechir comment faire pour les prev de l'INSEE
 #### VS erreur du LLM

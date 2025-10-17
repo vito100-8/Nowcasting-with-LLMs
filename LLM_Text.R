@@ -19,13 +19,13 @@ english <- 1
 temp_LLM <- 0.7
 n_repro <- 2
 sys_prompt <- ifelse(english == 1,
-                     "You will act as the economic agent you are told to be. Answer based on your knowledge and the document provided in less than 200 words, do not invent facts." ,
-                     "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et du document fourni, n'inventez pas de faits.")
+                     "You will act as the economic agent you are told to be. Answer based on your knowledge and the document provided in less than 200 words. You will use only the information available as of the forecast date, do not invent facts." ,
+                     "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et du document fourni. Vous n'utiliserez que l'information disponible à la date du jour de la prévision, n'inventez pas de faits.")
 
 document_folder_BDF <- "docEMC_clean"
 document_folder_INSEE <- "INSEE_Scrap"
 
-
+  
 # API Key (pour ellmer on utilise API_KEY_GEMINI)
 cle_API <- Sys.getenv("API_KEY_GEMINI")
 
@@ -467,12 +467,11 @@ ggplot(bdf_text_long, aes(x = as.numeric(forecast), fill = source, color = sourc
 
 ############### A FAIRE #################
 
-# COPIER PROMPT SUR UN WORD AFIN DE LES COMPARER/REDIGER + COHERENCE FR/EN
-
 # NE PAS DONNER D EXEMPLE DANS LE PROMPT POUR NE PAS INDUIRE A CERTAINS RESULTATS (positifs notamment)
 
 #Ajouter de manière récursive les erreurs du LLM dans ses forecast en t-1 ?
 
-#vecteur des dates : veilles des EMC + rechercher l'emc le lendemain et le dernier enquête INSEE en date
+#Créer un xlsx de df_date pour qu'il soit global
 
-#prompt identique entre Text et noText (avec une phrase sur les pdf en plus juste)
+
+#BENCHMARK ECONOMETRIQUE AR(2) + indicatrice 2009
