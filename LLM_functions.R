@@ -323,27 +323,89 @@ inversed_weight <- function(pred_eco, pred_LLM, error_eco, error_LLM) {
     ))
   }
   
-#Fonction méthode Bates-Granger
-BG_weight <- function(pred_eco, pred_LLM, error_eco, error_LLM) {
+#Fonction type Method C of Improved methods of combining forecasts (Granger, Ramanathan)
+
+# Inputs :
+
+#  - y : vecteur numérique des valeurs du PIB
+#  - forecasts : matrice ou data.frame n x k (prévisions historiques des k modèles)
+
+
+# Output :
+
+#      combined : vecteur de longueur n (prévisions combinées )
+#      weights  : matrix n_preds x (k + intercept) des coefficients estimés à chaque pas
+#      preds_idx: indices temporels correspondants aux prédictions (t+1 ici)
+
+
+gr_rolling <- function(y, forecasts, rolling_window = 80) {
+  # vérifications des inputs
+  if (!is.numeric(y)) stop("y doit être un vecteur numérique.")
+  if (!(is.matrix(forecasts) || is.data.frame(forecasts))) stop("forecasts doivent être une matrice ou un df.")
+  forecasts <- as.data.frame(forecasts)
+  n <- length(y)
+  if (n != nrow(forecasts)) stop("y et forecasts doivent avoir le même nombre d'observations")
+  if (rolling_window >= n) stop("rolling_window doit être strictement inférieur à la longueur de  y.")
   
-    # Variances et covariance des erreurs
-    var_eco <- var(error_eco, na.rm = TRUE)
-    var_LLM <- var(error_LLM, na.rm = TRUE)
-    covar <- cov(error_eco, error_LLM, use = "complete.obs")
+  k <- ncol(forecasts)
+  colnames(forecasts) <- ifelse(is.null(colnames(forecasts)),
+                                paste0("f", seq_len(k)),
+                                colnames(forecasts))
+  
+  # Initialisation sorties
+  combined <- rep(NA_real_, n)
+  # on stockera poids pour chaque prédiction, une colonne pour l'intercept
+  coef_names <-  c("(Intercept)", colnames(forecasts)) 
+  max_preds <- n - rolling_window
+  weights_mat <- matrix(NA_real_, nrow = max_preds, ncol = length(coef_names),
+                        dimnames = list(NULL, coef_names))
+  pred_idx <- integer(max_preds)  # indices t+1 where we have a prediction
+  row_id <- 1
+
+  
+  # boucle rolling
+  for (i in rolling_window:(n-1)) {
+    train_idx <- (i - rolling_window +1) : i
+    test_idx  <- i + 1
     
-    # Calcul des poids Bates & Granger (type BG_comb)
-    weight_eco <- (var_LLM - covar) / (var_eco + var_LLM - 2 * covar)
-    weight_LLM <- 1 - w_eco
+    # construire df d'entraînement
+    df_train <- data.frame(y = y[train_idx], forecasts[train_idx, , drop = FALSE])
     
-    # Nowcast 
-    nowcast <- weight_eco * pred_eco + weight_LLM * pred_LLM
+
+    #regression
+      formula <- as.formula(paste("y ~", paste(colnames(forecasts), collapse = " + ")))
+    fit <- lm(formula, data = df_train)
+
     
-    return(list(
-      nowcast = nowcast,
-      weights = c(Econométrie = weight_eco, LLM = weight_LLM),
-      covariance = covar
-    ))
+    # préparation du newdata pour predict
+    f_data <- as.data.frame(t(forecasts[test_idx, , drop = FALSE]))
+    colnames(f_data) <- colnames(forecasts)
+    
+    # prédiction et stockage
+    pred_val <- predict(fit, newdata = f_data)
+    
+    combined[test_idx] <- pred_val
+    # récupérer coefficients des poids 
+    coefs <- coef(fit)
+    weights_mat[row_id, ] <- coefs
+    
+    #indice de la prévision
+    pred_idx[row_id] <- test_idx
+    
+    row_id <- row_id + 1
   }
   
+    #variables qu'on va retourner (row id - 1 car le dernier indice est length_df + 1)
+    weights_mat <- weights_mat[1:(row_id - 1), , drop = FALSE]
+    pred_idx <- preds_idx[1:(row_id - 1)]
+
+  
+  return(list(
+    combined = combined,
+    weights = weights_mat,
+    pred_idx = preds_idx
+  ))
+}
+
   
 
