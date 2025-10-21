@@ -65,10 +65,10 @@ BDF_current_boss <- function(y_p){
 
 
 #Concaténer les enquêtes de l'INSEE/BDF en un PDF
-merge_pdfs_INSEE <- function(files, output_path) {
+merge_pdfs <- function(files, output_path) {
   pdf_combine(input = files, output = output_path)
   return(output_path)
-} 
+}
 
 ###########
 # LLM_Text
@@ -125,11 +125,6 @@ get_last_insee_docs_by_type <- function(target_date, doc_type, folder_to_search)
 
 
 
-#Concaténer les 3 enquêtes de l'INSEE
-merge_pdfs <- function(files, output_path) {
-  pdf_combine(input = files, output = output_path)
-  return(output_path)
-} 
 
 
 ################
@@ -257,36 +252,103 @@ get_all_last_insee_docs_by_type <- function(target_date, doc_type, folder_to_sea
   return(full_path)
 }
 
-#########
-#LLM_TS #A voir si on enlève
-#########
 
-#Prendre les données de la TS jusqu'à la date de prévision
-get_last_ts <-function(target_date, df_ts){
-  target_date <- as.Date(target_date)
+
+
+#######################
+#LLM_rolling_text
+######################
+
+get_docs_to_merge <- function(current_date, 
+                              df_date, 
+                              date_prev_BDF, 
+                              document_folder_BDF = "./docEMC_clean/",
+                              document_folder_INSEE = "./INSEE_Scrap/",
+                              output_folder_BDF = "./BDF_files_used/",
+                              output_folder_INSEE = "./INSEE_files_used/") {
   
-  # Transformer Year + Quarter en date (dernier jour du trimestre)
-  df_ts <- df_ts %>%
-    mutate(
-      date_finale_d = case_when(
-        Trimestre == 1 ~ ymd(paste0(Année, "-04-30")),
-        Trimestre == 2 ~ ymd(paste0(Année, "-07-30")),
-        Trimestre == 3 ~ ymd(paste0(Année, "-10-30")),
-        Trimestre == 4 ~ ymd(paste0(Année, "-01-30"))
-      )
-    )
+  # --- sécurité et prérequis
+  if (!dir.exists(output_folder_BDF)) dir.create(output_folder_BDF, recursive = TRUE)
+  if (!dir.exists(output_folder_INSEE)) dir.create(output_folder_INSEE, recursive = TRUE)
   
-  # Filtrer toutes les données ≤ target_date
-  data_ts <- df_ts %>%
-    filter(date_finale_d <= target_date)
+  # identification du trimestre et du rang dans le trimestre
+  m <- month(current_date)
+  y <- year(current_date)
   
-  if (nrow(data_ts) == 0) {
-    warning(paste("Aucune donnée disponible avant", target_date))
-    return(NULL)
+  if (m == 1) {
+    # janvier -> dernier trimestre de l'année précédente
+    months_in_quarter <- 3
+    year_ref <- y - 1
+    q_trim <- 4
+  } else {
+    q_trim <- ((m - 2) %/% 3) + 1
+    year_ref <- y
+    months_in_quarter <- ((m - 2) %% 3) + 1
   }
   
-  return(data_ts)
+  message(sprintf("Date: %s -> T%d (%d) mois dans le trimestre", 
+                  format(current_date, "%Y-%m-%d"), q_trim, months_in_quarter))
+  
+ #BOUCLE BDF
+  BDF_docs_to_merge <- c()
+  current_ref_date <- current_date
+  
+  # Boucle pour récupérer autant de documents EMC que nécessaire
+  for (j in seq_len(months_in_quarter)) {
+    next_doc_name <- get_next_doc(date_prev_BDF, current_ref_date)
+
+      full_path <- path_from_docname(next_doc_name, folder = document_folder_BDF)
+      BDF_docs_to_merge <- c(BDF_docs_to_merge, full_path)
+      
+      current_index <- which(df_date$`Date Prevision` == current_ref_date)
+      current_ref_date <- df_date$`Date Prevision`[current_index - 1]
+  }
+  
+  BDF_docs_to_merge <- rev(BDF_docs_to_merge) # du plus ancien au plus récent
+  BDF_combined_path <- file.path(output_folder_BDF,
+                              paste0("combined_BDF_", format(current_date, "%Y%m%d"), ".pdf"))
+  merge_pdfs(BDF_docs_to_merge, BDF_combined_path)
+  
+  #BOUCLE INSEE
+  INSEE_docs_to_merge <- c()
+  current_ref_date <- current_date
+  
+  for (j in seq_len(months_in_quarter)) {
+    # récupérer les 3 types pour la date courante
+    emi_path <- get_last_insee_docs_by_type(current_ref_date, "EMI", document_folder_INSEE)
+    ser_path <- get_last_insee_docs_by_type(current_ref_date, "SER", document_folder_INSEE)
+    bat_path <- get_last_insee_docs_by_type(current_ref_date, "BAT", document_folder_INSEE)
+    
+    all_insee_docs_to_combine <- c(emi_path, ser_path, bat_path)
+    all_insee_docs_to_combine <- all_insee_docs_to_combine[file.exists(all_insee_docs_to_combine)]
+    
+    if (length(all_insee_docs_to_combine) > 0) {
+      INSEE_docs_to_merge <- c(INSEE_docs_to_merge, all_insee_docs_to_combine)
+    }
+    
+    current_index <- which(df_date$`Date Prevision` == current_ref_date)
+    current_ref_date <- df_date$`Date Prevision`[current_index - 1]
+  }
+  
+  INSEE_docs_to_merge <- unique(rev(INSEE_docs_to_merge))
+
+  INSEE_combined_path <- file.path(output_folder_INSEE,
+                        paste0("combined_INSEE_", format(current_date, "%Y%m%d"), ".pdf"))
+  merge_pdfs(INSEE_docs_to_merge, INSEE_combined_path)
+
+  
+  
+  
+  
+  #RENVOI DES CHEMINS DES FICHIERS BDF ET INSEE
+  return(list(
+    BDF_path = BDF_combined_path,
+    INSEE_path = INSEE_combined_path
+
+  ))
 }
+
+
 
 ################################
 # FONCTION LLM + ECONOMETRIE
