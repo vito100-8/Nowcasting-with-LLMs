@@ -294,35 +294,70 @@ get_last_ts <-function(target_date, df_ts){
 
 #Fonction moyenne arithmétique
 weight_avg <- function(pred_eco, pred_LLM) {
-  nowcast <- 0.5*pred_eco + 0.5*pred_LLM
+  nowcast <- rowMeans(c(pred_eco, pred_LLM))
   return(list(
-    nowcast = nowcast,
+    nowcast = nowcast
   ))
 }
 
 #Fonction inverse des erreurs moyennes quadratiques
-inversed_weight <- function(pred_eco, pred_LLM, error_eco, error_LLM) {
-    
-    # Calcul des MSE pour chaque modèle
-    MSE_eco <- mean(error_eco^2, na.rm = TRUE)
-    MSE_LLM <- mean(error_LLM^2, na.rm = TRUE)
+
+rolling_inversed_weight <- function(y, pred_eco, pred_LLM, rolling_window) {
   
+  # vérifications des inputs
+  if (!is.numeric(y)) stop("y doit être un vecteur numérique.")
+  if (length(pred_eco) != length(pred_LLM) || length(y) != length(pred_eco)) {
+    stop("y, pred_eco et pred_LLM doivent avoir la même longueur.")
+  }
+  n <- length(y)
+  if (rolling_window >= n) stop("rolling_window doit être plus petite que la taille de l’échantillon.")
   
-    # Calcul des poids inverses du MSE
-    weight_raw <- c(1 / MSE_eco, 1 / MSE_LLM)
-    weight <- weight_raw / sum(weight_raw)  # normalisation pour avoir w1 + w2 = 1
+  # initialisation des vecteurs de sortie (on pose que n_modèle = 2)
+  nowcast <- rep(NA_real_, n)
+  weights_mat <- matrix(NA_real_, nrow = n - rolling_window + 1,
+                        ncol = 2, dimnames = list(NULL, c("w_eco", "w_LLM")))
+  row_id <- 1
+  
+  # boucle rolling
+  for (i in rolling_window:n) {
+    # période courante : la fenêtre d'apprentissage est basée sur les observations passées
+    train_idx <- (i - rolling_window + 1):i
     
-    # Résultat du nowcast
-    nowcast <- weight[1] * pred_eco + weight[2] * pred_LLM
+    # calcul des erreurs dans la fenêtre courante
+    err_eco <- y[train_idx] - pred_eco[train_idx]
+    err_LLM <- y[train_idx] - pred_LLM[train_idx]
     
-    # Retourne une liste claire
-    return(list(
-      nowcast = nowcast,
-      weight_eco = w[1],
-      weight_LLM = w[2]
-    ))
+    # MSE de chaque modèle dans la fenêtre
+    MSE_eco <- mean(err_eco^2, na.rm = TRUE)
+    MSE_LLM <- mean(err_LLM^2, na.rm = TRUE)
+    
+    # calcul des poids inverses du MSE
+    w_raw <- c(1 / MSE_eco, 1 / MSE_LLM)
+    w_norm <- w_raw / sum(w_raw)
+    
+    # combinaison pondérée des prévisions à la date i 
+    nowcast[i] <- w_norm[1] * pred_eco[i] + w_norm[2] * pred_LLM[i]
+    
+    # stocker les poids correspondants
+    weights_mat[row_id, ] <- w_norm
+    row_id <- row_id + 1
   }
   
+  # aligner dimensions finales
+  weights_mat <- weights_mat[1:(row_id - 1), , drop = FALSE]
+  
+  #Garder uniquement les prévisions et enlever les NAs
+  nowcast = na.omit(nowcast)
+  attr(nowcast, "na.action") <- NULL
+  
+  return(list(
+    nowcast = nowcast,
+    weights = weights_mat
+  ))
+}
+
+
+
 #Fonction type Method C of Improved methods of combining forecasts (Granger, Ramanathan)
 
 # Inputs :
@@ -335,7 +370,6 @@ inversed_weight <- function(pred_eco, pred_LLM, error_eco, error_LLM) {
 
 #      combined : vecteur de longueur n (prévisions combinées )
 #      weights  : matrix n_preds x (k + intercept) des coefficients estimés à chaque pas
-#      preds_idx: indices temporels correspondants aux prédictions (t+1 ici)
 
 
 gr_rolling <- function(y, forecasts, rolling_window = 80) {
@@ -347,10 +381,7 @@ gr_rolling <- function(y, forecasts, rolling_window = 80) {
   if (n != nrow(forecasts)) stop("y et forecasts doivent avoir le même nombre d'observations")
   if (rolling_window >= n) stop("rolling_window doit être strictement inférieur à la longueur de  y.")
   
-  k <- ncol(forecasts)
-  colnames(forecasts) <- ifelse(is.null(colnames(forecasts)),
-                                paste0("f", seq_len(k)),
-                                colnames(forecasts))
+
   
   # Initialisation sorties
   combined <- rep(NA_real_, n)
@@ -359,53 +390,44 @@ gr_rolling <- function(y, forecasts, rolling_window = 80) {
   max_preds <- n - rolling_window
   weights_mat <- matrix(NA_real_, nrow = max_preds, ncol = length(coef_names),
                         dimnames = list(NULL, coef_names))
-  pred_idx <- integer(max_preds)  # indices t+1 where we have a prediction
   row_id <- 1
 
-  
   # boucle rolling
   for (i in rolling_window:(n-1)) {
     train_idx <- (i - rolling_window +1) : i
     test_idx  <- i + 1
     
-    # construire df d'entraînement
-    df_train <- data.frame(y = y[train_idx], forecasts[train_idx, , drop = FALSE])
-    
+    # construire df d'entraînement et de prévision
 
+    df_train <- data.frame(var_y = y[train_idx], var1 = f1[train_idx], var2 =  f2[train_idx])
+    df_prev <- data.frame(var_y = y[test_idx], var1 = f1[test_idx], var2 = f2[test_idx])
+    
     #regression
-      formula <- as.formula(paste("y ~", paste(colnames(forecasts), collapse = " + ")))
-    fit <- lm(formula, data = df_train)
+    fit <- lm(var_y ~ var1 + var2, data = df_train)
+  
 
-    
-    # préparation du newdata pour predict
-    f_data <- as.data.frame(t(forecasts[test_idx, , drop = FALSE]))
-    colnames(f_data) <- colnames(forecasts)
-    
+
     # prédiction et stockage
-    pred_val <- predict(fit, newdata = f_data)
+    pred_val <- predict(fit, newdata = df_prev)
     
     combined[test_idx] <- pred_val
     # récupérer coefficients des poids 
     coefs <- coef(fit)
     weights_mat[row_id, ] <- coefs
     
-    #indice de la prévision
-    pred_idx[row_id] <- test_idx
     
     row_id <- row_id + 1
   }
   
-    #variables qu'on va retourner (row id - 1 car le dernier indice est length_df + 1)
-    weights_mat <- weights_mat[1:(row_id - 1), , drop = FALSE]
-    pred_idx <- preds_idx[1:(row_id - 1)]
+    #matrice des poids
+    weights_mat <- weights_mat[1:(row_id - 1), ]
 
+  forecast_comb = na.omit(combined)
+  attr(forecast_comb, "na.action") <- NULL
   
   return(list(
-    combined = combined,
-    weights = weights_mat,
-    pred_idx = preds_idx
+    forecast_comb = forecast_comb,
+    weights = weights_mat
   ))
 }
-
-  
 
