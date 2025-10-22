@@ -1,8 +1,11 @@
 #INSERTION D'UN EXCEL ITERATIF SELON LA PERIODE DE PREVISION AU LLM#
 
 
-rm(list = ls()) 
+rm(list = ls())  
+source("Library_Nowcasting_LLM.R")
 source("LLM_functions.R")
+source("Script_dates_prev.R")
+
 
 # Repertoire/ env
 setwd(dirname(getActiveDocumentContext()$path))
@@ -164,7 +167,7 @@ results_uploads_BDF <- list()
 row_id_BDF <- 1
 
 for (d in dates_used) { #si on utilise uniquement un vecteur de date en texte
-#for (d in dates_used$`Date Prevision`) {  ### si on utilise tout le df
+  #for (d in dates_used$`Date Prevision`) {  ### si on utilise tout le df
   # Tronquage
   df_temp <- df_enq_BDF |> 
     filter(dates <= as.Date(d))
@@ -183,7 +186,7 @@ for (d in dates_used) { #si on utilise uniquement un vecteur de date en texte
                              winslash = "/", mustWork = TRUE)
   
   
- 
+  
   uploaded_doc <- google_upload(
     input_doc,
     api_key = cle_API) 
@@ -195,7 +198,7 @@ for (d in dates_used) { #si on utilise uniquement un vecteur de date en texte
   trimestre_index <- if (mois_index %in% c(1,11,12)) 4 else if (mois_index %in% 2:4) 1 else if (mois_index %in% 5:7) 2 else 3
   year_prev <- if (mois_index == 1 && trimestre_index == 4) year_current - 1 else year_current
   prompt_text <- prompt_template_BDF(current_date, trimestre_index ,
-                                       year_prev)
+                                     year_prev)
   
   # appel à Gemini en intégrant le document voulu
   out_list <- future_lapply(seq_len(n_repro), function(i) {
@@ -332,7 +335,6 @@ for (d in dates_used) {
 # Stockage + document résultat
 df_excel_INSEE <- do.call(rbind, results_uploads_INSEE)
 write.xlsx(df_excel_INSEE, file = "Indicateurs_INSEE/upload_summary.xlsx", overwrite = TRUE)
-
 
 
 
