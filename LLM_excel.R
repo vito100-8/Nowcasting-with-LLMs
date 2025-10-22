@@ -29,7 +29,7 @@ sys_prompt <- ifelse(english == 1,
 # Vecteur de dates en exemple
 dates_used <- as.Date(c("2015-02-08"))
 #Dates utilisées
-dates_used <- read_xlsx(here("dates_prev.xlsx"))
+#dates_used <- read_xlsx(here("dates_prev.xlsx"))
 
 # API Key (pour ellmer on utilise API_KEY_GEMINI)
 cle_API <- Sys.getenv("API_KEY_GEMINI")
