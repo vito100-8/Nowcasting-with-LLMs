@@ -1,8 +1,11 @@
 #Script : Requête LLM avec enquête en input, de 1 à 3 selon le mois au sein du trimestre
 
+rm(list = ls())  
+source("Library_Nowcasting_LLM.R")
 source("LLM_functions.R")
+source("Script_dates_prev.R")
 
-rm(list = ls())
+
 
 
 setwd(dirname(getActiveDocumentContext()$path))
@@ -136,7 +139,7 @@ for (dt in as.Date(df_date$`Date Prevision`)) {
   docs <- get_docs_to_merge(
     current_date = current_date,
     df_date = df_date,
-    date_prev_BDF = date_prev_BDF,
+    date_prev_BDF = date_publi_prev,
     document_folder_BDF = document_folder_BDF,
     document_folder_INSEE = document_folder_INSEE,
     output_folder_BDF = output_folder_BDF,

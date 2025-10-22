@@ -1,7 +1,10 @@
 #### Script : Requêtes LLM (Gemini) avec PDF en pièce-jointe  ####
 
-rm(list = ls()) 
+rm(list = ls())  
+source("Library_Nowcasting_LLM.R")
 source("LLM_functions.R")
+source("Script_dates_prev.R")
+
 
 # Repertoire/ env
 setwd(dirname(getActiveDocumentContext()$path))

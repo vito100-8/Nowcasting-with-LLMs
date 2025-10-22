@@ -1,8 +1,11 @@
 # ReadMe
 # Prévision récursive de croissance du PIB avec LLM sans document
 
-rm(list=ls())
+rm(list = ls())  
+source("Library_Nowcasting_LLM.R")
 source("LLM_functions.R")
+source("Script_dates_prev.R")
+
 
 # Répertoire de travail actif
 

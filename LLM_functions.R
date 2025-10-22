@@ -289,6 +289,13 @@ get_docs_to_merge <- function(current_date,
   message(sprintf("Date: %s -> T%d (%d) mois dans le trimestre", 
                   format(current_date, "%Y-%m-%d"), q_trim, months_in_quarter))
   
+  
+  # construire la séquence des mois du trimestre (ex : q_trim = 1 alor de  Jan-Mar) -> Boucle INSEE
+  quarter_first_month <- (q_trim - 1) * 3 + 1
+  quarter_months <- quarter_first_month:(quarter_first_month + 2)
+  # on sélectionne les mois voulus selon la date (ordre ancien->récent)
+  months_to_fetch <- quarter_months[1:months_in_quarter]
+  
  #BOUCLE BDF
   BDF_docs_to_merge <- c()
   current_ref_date <- current_date
@@ -304,41 +311,33 @@ get_docs_to_merge <- function(current_date,
       current_ref_date <- df_date$`Date Prevision`[current_index - 1]
   }
   
-  BDF_docs_to_merge <- rev(BDF_docs_to_merge) # du plus ancien au plus récent
   BDF_combined_path <- file.path(output_folder_BDF,
                               paste0("combined_BDF_", format(current_date, "%Y%m%d"), ".pdf"))
   merge_pdfs(BDF_docs_to_merge, BDF_combined_path)
   
   #BOUCLE INSEE
   INSEE_docs_to_merge <- c()
-  current_ref_date <- current_date
+  months_desc <- rev(months_to_fetch) 
   
-  for (j in seq_len(months_in_quarter)) {
-    # récupérer les 3 types pour la date courante
-    emi_path <- get_last_insee_docs_by_type(current_ref_date, "EMI", document_folder_INSEE)
-    ser_path <- get_last_insee_docs_by_type(current_ref_date, "SER", document_folder_INSEE)
-    bat_path <- get_last_insee_docs_by_type(current_ref_date, "BAT", document_folder_INSEE)
+  for (mm in months_desc) {
     
-    all_insee_docs_to_combine <- c(emi_path, ser_path, bat_path)
-    all_insee_docs_to_combine <- all_insee_docs_to_combine[file.exists(all_insee_docs_to_combine)]
-    
-    if (length(all_insee_docs_to_combine) > 0) {
-      INSEE_docs_to_merge <- c(INSEE_docs_to_merge, all_insee_docs_to_combine)
-    }
-    
-    current_index <- which(df_date$`Date Prevision` == current_ref_date)
-    current_ref_date <- df_date$`Date Prevision`[current_index - 1]
+    target_year <- year_ref
+    target_month <- mm 
+   
+    # Construire noms attendus AAAA_MM_TYPE.pdf
+    emi_file <- file.path(document_folder_INSEE, sprintf("%04d_%02d_EMI.pdf", target_year, target_month))
+    ser_file <- file.path(document_folder_INSEE, sprintf("%04d_%02d_SER.pdf", target_year, target_month))
+    bat_file <- file.path(document_folder_INSEE, sprintf("%04d_%02d_BAT.pdf", target_year, target_month))
+    # ordre demandé : EMI, SER, BAT (si existent) ; on ajoute seulement s'ils existent
+    if (file.exists(emi_file)) INSEE_docs_to_merge <- c(INSEE_docs_to_merge, emi_file)
+    if (file.exists(ser_file)) INSEE_docs_to_merge <- c(INSEE_docs_to_merge, ser_file)
+    if (file.exists(bat_file)) INSEE_docs_to_merge <- c(INSEE_docs_to_merge, bat_file)
   }
-  
-  INSEE_docs_to_merge <- unique(rev(INSEE_docs_to_merge))
-
+    
   INSEE_combined_path <- file.path(output_folder_INSEE,
                         paste0("combined_INSEE_", format(current_date, "%Y%m%d"), ".pdf"))
   merge_pdfs(INSEE_docs_to_merge, INSEE_combined_path)
 
-  
-  
-  
   
   #RENVOI DES CHEMINS DES FICHIERS BDF ET INSEE
   return(list(
@@ -348,6 +347,55 @@ get_docs_to_merge <- function(current_date,
   ))
 }
 
+
+##############################
+#LLM_excel_with_error
+##############################
+
+# Fonction de la même structure que un df (df_temp) avec un historique des erreurs pour pouvoir ensuite les rajouter au df initial
+make_hist_rows <- function(template_df, dates_vec, llm_prev_vec, prev_col = "LLM_prev_error") {
+  n <- length(dates_vec)
+  tmpl <- template_df[1, , drop = FALSE]
+  hist_rows <- tmpl[rep(1, n), , drop = FALSE]
+  for (col in names(hist_rows)) {
+    cls <- class(tmpl[[col]])[1]
+    hist_rows[[col]] <- switch(cls,
+                               "Date" = as.Date(rep(NA, n)),
+                               "POSIXct" = as.POSIXct(rep(NA, n)),
+                               "POSIXt" = as.POSIXct(rep(NA, n)),
+                               "numeric" = rep(NA_real_, n),
+                               "double" = rep(NA_real_, n),
+                               "integer" = rep(NA_integer_, n),
+                               rep(NA_character_, n)
+    )
+  }
+  hist_rows$dates <- as.Date(dates_vec)
+  hist_rows[[prev_col]] <- as.character(llm_prev_vec)
+  hist_rows
+}
+
+# Matcher la prévision au bon PIB_PR (trouver le PIB qui match le quarter)
+find_pib_index <- function(cur_date) {
+  cur_date <- as.Date(cur_date)
+  if ("dates" %in% names(df_PIB)) vec <- as.Date(df_PIB$dates) 
+  else if ("Date" %in% names(df_PIB)) vec <- as.Date(df_PIB$Date)
+  else vec <- as.Date(df_PIB[[1]])
+  # match date exact
+  exact <- which(vec == cur_date)
+  if (length(exact) == 1) return(exact)
+  # match par trimestre
+  q_target <- quarter(cur_date)
+  y_target <- year(cur_date)
+  qidx <- which(quarter(vec) == q_target & lubridate::year(vec) == y_target)
+  if (length(qidx) >= 1) return(qidx[1])
+  # match avec le dernier PIB en date si pas dans le trimestre
+  prev_idx <- which(vec <= cur_date)
+  if (length(prev_idx) >= 1) return(tail(prev_idx, 1))
+  # si aucune correspondance alors renvoi le prochain PIB (laisser ça ou faire une erreur ?)
+  future_idx <- which(vec > cur_date)
+  if (length(future_idx) >= 1) return(future_idx[1])
+  integer(0)
+}
 
 
 ################################

@@ -3,7 +3,12 @@
 #Forme : données de 1990 à fin 2024, régression linéaire de 1990 à 2010 puis nowcasting du PIB de 2010 à fin 2024
 
 
-rm(list = ls())
+rm(list = ls())  
+source("Library_Nowcasting_LLM.R")
+source("LLM_functions.R")
+source("Script_dates_prev.R")
+
+
 
 ######################
 #PARAMETRES UTILISATEUR
