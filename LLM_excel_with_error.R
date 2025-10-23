@@ -282,7 +282,7 @@ for (idx in seq_along(dates_vector)) {
   }
   errors_BDF[idx] <- error_current
   
-  # record the error tied to the data-document date used so future CSVs will show it in that row
+  # Pour que lorsque l'on crée le prochain doc, l'erreur s'affiche à la bonne ligne
   if (exists("data_date")) {
     errors_by_data_BDF[[as.character(data_date)]] <- error_current
   }
