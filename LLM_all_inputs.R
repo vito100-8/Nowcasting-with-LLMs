@@ -27,10 +27,10 @@ sys_prompt <- ifelse(english == 1,
 document_folder_BDF <- "docEMC_clean"
 document_folder_INSEE <- "INSEE_Scrap"
 
-# dates (exemple)
-df_date <- as.Date(c("2023-03-01", "2023-06-01")) # format aaaa-mm-jj
+
 #Dates utilisées
-df_date <- read_xlsx(here("dates_prev.xlsx"))
+dates <- read_xlsx(here("dates_prev.xlsx"))
+dates <- if (is.data.frame(dates)) as.Date(dates[[1]]) else as.Date(dates_used)
 
 # API Key (pour ellmer on utilise API_KEY_GEMINI)
 cle_API <- Sys.getenv("API_KEY_GEMINI")
@@ -45,41 +45,52 @@ chat_gemini <- chat_google_gemini( system_prompt = sys_prompt,
 )
 
 
+######################################
+#Données utilisées
+######################################
 
-#### CHARGER DATES EMC POUR LA BDF #######
-## charger table de dates
-date_prev_temp_BDF <- read_excel("Synthese_fileEMC.xlsx")
-colnames(date_prev_temp_BDF)[1:4] <- c("fichier", "date_courte", "date_longue", "trimestre")
+#Téléchargement données
 
-date_prev_temp_BDF <- date_prev_temp_BDF |>
+df_PIB <- read_xlsx("Data_BDF_INSEE.xlsx", sheet = "trimestriel")
+df_ISMA <- read_xlsx("Data_BDF_INSEE.xlsx", sheet = "mensuel ISMA")
+df_enq_BDF <- read.xlsx("Data_BDF_INSEE.xlsx", sheet = "ENQ_BDF")
+df_enq_INSEE <- read_xlsx("Data_BDF_INSEE.xlsx", sheet = "ENQ_INSEE")
+
+#Nettoyage de df_enq_BDF
+
+df_enq_BDF <- df_enq_BDF |> 
+  slice(6:433) |> 
+  mutate(dates = `Titre.:`, , .keep = "unused") |>
+  select(dates, everything())
+
+
+#Nettoyage de df_enq_INSEE
+
+df_enq_INSEE <- df_enq_INSEE |>
+  rename(dates = `...1`) |>
   mutate(
-    annee_prev = as.numeric(str_extract(fichier, "^\\d{4}")),        # 4 chiffres au début
-    mois_prev  = as.numeric(str_extract(fichier, "(?<=\\d{4}_)\\d{1,2}"))  # chiffres après l'année et le _
+    dates = str_replace_all(dates, 
+                            c("janv\\." = "jan", "févr\\." = "feb", "mars" = "mar",
+                              "avr\\." = "apr", "mai" = "may", "juin" = "jun",
+                              "juil\\." = "jul", "août" = "aug", "sept\\." = "sep",
+                              "oct\\." = "oct", "nov\\." = "nov", "déc\\." = "dec"))
   ) |>
-  filter(annee_prev >= 2015)
+  mutate(dates = as.Date(parse_date_time(dates, orders = "b Y"), origin = "1970-01-01"))
+
+new_names <- paste0(names(df_enq_INSEE), " : ", df_enq_INSEE[1, ])
+colnames(df_enq_INSEE) <- new_names
 
 
-date_prev_temp_BDF <- date_prev_temp_BDF |>
+df_enq_INSEE <- df_enq_INSEE |>
+  slice(2:430)|>
   mutate(
-    annee_prev = as.numeric(str_extract(fichier, "^\\d{4}")),  # 4 chiffres au début
-    mois_prev  = as.numeric(str_extract(fichier, "(?<=EMC_)\\d{1,2}(?=_)")), # chiffres après l'année et le _
-    date_courte_d = as.Date(as.character(date_courte)),
-    date_longue_d = as.Date(as.numeric((date_longue)), origin = "1899-12-30")
-  ) |>
-  mutate(
-    date_finale_d = case_when(
-      annee_prev >= 2015 & annee_prev <= 2019 ~ date_courte_d,
-      annee_prev >= 2020 & annee_prev <= 2024 ~ date_longue_d
-    )
-  )
+    dates = `dates : NA`, .keep = "unused") |>
+  select(dates, everything())
 
-date_prev_BDF<- date_prev_temp_BDF |>
-  select(fichier, trimestre, date_finale_d) |>
-  filter(!is.na(date_finale_d))
-# on supprime les lignes où la variable date_finale_d est manquante (NA) 
-# car pas de publication de l'enquête (pandémie)
 
-print(date_prev_BDF)
+
+
+
 
 ###################################
 # Prompts
@@ -87,63 +98,74 @@ print(date_prev_BDF)
 
 if (english == 1) {
   try(Sys.setlocale("LC_TIME", "English"), silent = TRUE)
-  #try(Sys.setlocale("LC_TIME", "en_US.UTF-8"), silent = TRUE)
-  prompt_template_BDF <- function(d, q_trim, y_prev) {
+  
+  #Renvoie le bon dirigeant
+  current_boss <- function(type, d) {
+    if (type == "BDF") return(BDF_current_boss(d))
+    if (type == "INSEE") return(INSEE_current_boss(d))
+  }
+  
+  # 
+  prompt_template <- function(type, d, q_trim, y_prev) {
+    boss <- current_boss(type, d)
+    position <- ifelse(type == "BDF", "Governor of the Banque de France" , "Director General of INSEE")
+    current_quarter <- if (q_trim == 1){
+      "first"}
+    else if (q_trim == 2){
+      "second"
+    }else if (q_trim == 3){
+      "third"}else{
+        "fourth"}
+    
+    
     paste0(
-      "Forget previous instructions and previous answers. You are ", BDF_current_boss(d), " (Governor of the Banque de France), giving a speech on France economic outlook. Today is ",
+      "Forget the previous instructions and answers. You are ", boss, ", ", position, 
+      ", giving a speech about the economic outlook of France. Today is ",
       format(d, "%d %B %Y"), ". ",
-      "You will be provided with the latest Banque de France Monthly business survey (Industry, Services and Construction). Using ONLY the information in that document and information available on or before ", 
-      format(d, "%d %B %Y"), ", provide a numeric forecast (decimal percent with sign, e.g. +0.3) for French real GDP growth for Q", q_trim, " ", y_prev, 
-      " and a confidence level (integer 0-100). Output EXACTLY in this format on a single line (no extra text): ",
-      "<forecast> (<confidence>). ",
-      "Example: +0.3 (80). ",
+      "You will be provided with a document with information about the current state and recent past of the French economy. ",
+      "Using only the information in that document and information that was available on or before ", format(d, "%d %B %Y"),
+      ", provide a numeric forecast (decimal percent with sign, e.g., +0.3) for French real GDP growth in the ", current_quarter, " quarter of ", y_prev,
+      " and a confidence level (integer 0–100). Output EXACTLY in this format on a single line (no extra text):\n",
+      "<forecast> (<confidence>)\nExample: +0.3 (80)\n",
       "Do NOT use any information published after ", format(d, "%d %B %Y"), "."
     )
   }
-  
-  prompt_template_INSEE <- function(d, q_trim, y_prev) {
-    paste0(
-      "Forget previous instructions and previous answers. You are ", INSEE_current_boss(d), " director General at INSEE (National Institute of Statistics and Economic Studies), analyzing the French economy. Today is ",
-      format(d, "%d %B %Y"), ". ",
-      "You will be provided with the latest INSEE monthly business tendency surveys (Industry, Services and Construction) for France. Using ONLY the information in these documents and information available on or before ", 
-      format(d, "%d %B %Y"), ", provide a numeric forecast (decimal percent with sign, e.g. +0.3) for French real GDP growth for Q", q_trim, " ", y_prev,
-      " and a confidence level (integer 0-100). Output EXACTLY in this format on a single line (no extra text): ",
-      "<forecast> (<confidence>). ",
-      "Example: +0.3 (80). ",
-      "Do NOT use any information published after ", format(d, "%d %B %Y"), "."
-    )
-  }
-  
   
 } else {
   try(Sys.setlocale("LC_TIME", "French"), silent = TRUE)
-  #try(Sys.setlocale("LC_TIME", "fr_FR.UTF-8"), silent = TRUE)
-  prompt_template_BDF <- function(d, q_trim, y_prev) {
-    paste0(
-      "Oubliez les instructions et réponses précédentes. Vous êtes ", BDF_current_boss(d),  ", Gouverneur de la Banque de France, prononçant un discours sur les perspectives économiques de la France. Nous sommes le ",
-      format(d, "%d %B %Y"), ". ",
-      "Vous recevrez la dernière enquête mensuelle de conjoncture de la Banque de France (Industrie, Services et Batiment). En utilisant UNIQUEMENT les informations contenues dans ce document et celles disponibles au plus tard le ", 
-      format(d, "%d %B %Y"), ", fournissez une prévision numérique (pourcentage décimal avec signe, ex. +0.3) pour la croissance du PIB réel français pour le trimestre ", q_trim, " ", y_prev,
-      " ainsi qu'un niveau de confiance (entier 0-100). Renvoyez EXACTEMENT sur une seule ligne (aucun texte supplémentaire) : ",
-      "<prévision> (<confiance>). ",
-      "Exemple : +0.3 (80). ",
-      "N'utilisez AUCUNE information publiée après le ", format(d, "%d %B %Y"), "."
-    )
+  
+  current_boss <- function(type, d) {
+    if (type == "BDF") return(BDF_current_boss(d))
+    if (type == "INSEE") return(INSEE_current_boss(d))
   }
   
-  prompt_template_INSEE <- function(d, q_trim, y_prev) {
+  prompt_template <- function(type, d, q_trim, y_prev) {
+    boss <- current_boss(type, d)
+    position <- ifelse(type == "BDF","Gouverneur de la Banque de France", "Directeur Général de l'INSEE")  
+    trimestre_actuel <- if (q_trim == 1){
+      "premier"}
+    else if (q_trim == 2){
+      "second"
+    }else if (q_trim == 3){
+      "troisième"}else{
+        "quatrième"}
+    
+    
     paste0(
-      "Oubliez les instructions et réponses précédentes. Vous êtes ", INSEE_current_boss(d),  ", Directeur Général de l'INSEE, analysant l'économie française. Nous sommes le ",
+      "Oubliez les instructions et les réponses précédentes. Vous êtes ", boss, ", ", position,
+      ", qui prononce un discours sur les perspectives économiques de la France. Nous sommes le ",
       format(d, "%d %B %Y"), ". ",
-      "Vous recevrez les dernières enquêtes de conjoncture mensuelles de l'INSEE (EMI, SER, BAT) pour la France. En utilisant UNIQUEMENT les informations contenues dans ces documents et celles disponibles au plus tard le ", 
-      format(d, "%d %B %Y"), ", fournissez une prévision numérique (pourcentage décimal avec signe, ex. +0.3) pour la croissance du PIB réel français pour le trimestre ", q_trim, " ", y_prev,
-      " ainsi qu'un niveau de confiance (entier 0-100). Renvoyez EXACTEMENT sur une seule ligne (aucun texte supplémentaire) : ",
-      "<prévision> (<confiance>). ",
-      "Exemple : +0.3 (80). ",
+      "Vous recevrez un document concernant la situation actuelle et passée de l'économie française. ",
+      "En utilisant UNIQUEMENT les informations contenues dans ce document et celles disponibles au plus tard le ", format(d, "%d %B %Y"),
+      ", fournissez une prévision numérique (pourcentage décimal avec signe, ex. +0.3) de la croissance du PIB réel français pour le ",
+      trimestre_actuel, " trimestre ", y_prev,
+      " et un niveau de confiance (entier 0-100). Renvoyez EXACTEMENT sur une seule ligne (aucun texte supplémentaire) :\n",
+      "<prévision> (<confiance>)\nExemple : +0.3 (80)\n",
       "N'utilisez AUCUNE information publiée après le ", format(d, "%d %B %Y"), "."
     )
   }
 }
+
 
 ###################################
 # Boucle principale BDF
@@ -161,40 +183,40 @@ t1 <- Sys.time()
 for (dt in dates) {
   current_date <- as.Date(dt) 
   
-  # Récupérer les 12 derniers documents
-  all_last_docs <- get_all_last_doc(date_prev_BDF, current_date)
+  # Transformer les données en text lisible
+  bdf_data_markdown <- df_to_markdown_table(df_enq_BDF, title = "Banque de France Survey Data")
+  contents_bdf_data <- ContentText(bdf_data_markdown)
   
-  #Transformer en chemins complets
-  all_bdf_docs_to_combine <- map_chr(all_last_docs, path_from_docname, folder = document_folder_BDF)
+  typeof(bdf_data_markdown)
+  # Trouver le bon pdf et son path
+  docname <- get_next_doc(dates, current_date)
+  pdf_path <- path_from_docname(docname, folder = document_folder_BDF)
   
-  #Ajout du PDF de la TS
-  pib_enq_path <- normalizePath("./Data_PIB_ENQ-1-3.pdf", winslash = "/", mustWork = TRUE)
-  all_bdf_docs_to_combine <- c(all_bdf_docs_to_combine, pib_enq_path)
-  
-  # Créer le PDF combiné
-  combined_pdf_path <- file.path("./BDF_files_used/", paste0("combined_BDF_", format(current_date, "%Y%m%d"), ".pdf"))
-  BDF_path <- merge_pdfs(all_bdf_docs_to_combine, combined_pdf_path)
-  
+  if (is.null(pdf_path)) {
+    warning("No PDF found for date ", current_date, " — skipping.")
+    next
+  }
   
   # Chargement du pdf souhaité
   uploaded_doc <- google_upload(
-    BDF_path,
+    pdf_path,
     base_url = "https://generativelanguage.googleapis.com/",
     api_key = cle_API
   )
+  
   # Initialisation des dates
   current_date <- as.Date(dt)
   mois_index <- as.integer(format(current_date, "%m"))
   year_current <- as.integer(format(current_date, "%Y"))
   trimestre_index <- if (mois_index %in% c(1,11,12)) 4 else if (mois_index %in% 2:4) 1 else if (mois_index %in% 5:7) 2 else 3
   year_prev <- if (mois_index == 1 && trimestre_index == 4) year_current - 1 else year_current
-  prompt_text <- prompt_template_BDF(current_date, trimestre_index ,
+  prompt_text <- prompt_template("BDF", current_date, trimestre_index ,
                                      year_prev)
-  
+ 
   # appel à Gemini en intégrant le document voulu
   out_list <- future_lapply(seq_len(n_repro), function(i) {
     tryCatch({
-      resp <- chat_gemini$chat(uploaded_doc, prompt_text)
+      resp <- chat_gemini$chat(uploaded_doc, prompt_text, contents_bdf_data)
       return(resp)}, error = function(e) {
         message("API error: ", conditionMessage(e))
         return(NA_character_)
@@ -260,17 +282,18 @@ t1 <- Sys.time()
 for (dt in dates) {
   current_date <- as.Date(dt) 
   
-  all_insee_docs_to_combine <- c(
-    get_last_12_insee_docs_by_type(current_date, "EMI",  document_folder_INSEE),
-    get_last_12_insee_docs_by_type(current_date, "SER",  document_folder_INSEE),
-    get_last_12_insee_docs_by_type(current_date, "BAT",  document_folder_INSEE)
-  )
   
-  # Ajouter du PDF de la TS
-  pib_enq_path <- normalizePath("./Data_PIB_ENQ-1-3.pdf", winslash = "/", mustWork = TRUE)
-  all_insee_docs_to_combine <- c(all_insee_docs_to_combine, pib_enq_path)
+  #Données en texte
+  insee_data_markdown <- df_to_markdown_table(df_enq_INSEE, title = "INSEE Survey Data")
+  contents_INSEE_data <- ContentText(insee_data_markdown)
   
-  #Concaténation en un PDF
+  # Trouver les bons pdf, le chemin d'accès et les concaténer
+  emi_path <- get_last_insee_docs_by_type(current_date,"EMI",  document_folder_INSEE)
+  ser_path <- get_last_insee_docs_by_type(current_date, "SER",document_folder_INSEE)
+  bat_path <- get_last_insee_docs_by_type(current_date, "BAT",document_folder_INSEE)
+  
+  ##concaténation des documents dans le chemin d'accès spécifié
+  all_insee_docs_to_combine <- c(emi_path, ser_path, bat_path)
   combined_pdf_path <- file.path( "./INSEE_files_used/", paste0("combined_INSEE_", format(current_date, "%Y%m%d"), ".pdf"))
   INSEE_path <- merge_pdfs(all_insee_docs_to_combine, combined_pdf_path)
   
@@ -287,13 +310,13 @@ for (dt in dates) {
   year_current <- as.integer(format(current_date, "%Y"))
   trimestre_index <- if (mois_index %in% c(1,11,12)) 4 else if (mois_index %in% 2:4) 1 else if (mois_index %in% 5:7) 2 else 3
   year_prev <- if (mois_index == 1 && trimestre_index == 4) year_current - 1 else year_current
-  prompt_text <- prompt_template_INSEE(current_date, trimestre_index ,
-                                       year_prev)
+  prompt_text <- paste0(prompt_template("INSEE", current_date, trimestre_index ,
+                                       year_prev), "\n", contents_INSEE_data)
   
   # appel à Gemini en intégrant le document voulu
   out_list <- future_lapply(seq_len(n_repro), function(i) {
     tryCatch({
-      resp <- chat_gemini$chat(uploaded_doc, prompt_text)
+      resp <- chat_gemini$chat(uploaded_doc, prompt_text, contents_INSEE_data)
       return(resp)}, error = function(e) {
         message("API error: ", conditionMessage(e))
         return(NA_character_)

@@ -20,6 +20,12 @@ sys_prompt <- ifelse(english == 1,
                      "You will act as the economic agent you are told to be. Answer based on your knowledge and the document provided in less than 200 words, do not invent facts." ,
                      "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et du document fourni, n'inventez pas de faits.")
 
+#Créer un vecteur de date
+dates <- read_xlsx(here("dates_prev.xlsx"))
+dates <- if (is.data.frame(dates_used)) as.Date(dates_used[[1]]) else as.Date(dates_used)
+
+
+
 document_folder_BDF <- "docEMC_clean"
 document_folder_INSEE <- "INSEE_Scrap"
 
@@ -41,40 +47,6 @@ chat_gemini <- chat_google_gemini( system_prompt = sys_prompt,
 
 
 
-#### CHARGER DATES EMC POUR LA BDF #######
-## charger table de dates
-date_prev_temp_BDF <- read_excel("Synthese_fileEMC.xlsx")
-colnames(date_prev_temp_BDF)[1:4] <- c("fichier", "date_courte", "date_longue", "trimestre")
-
-date_prev_temp_BDF <- date_prev_temp_BDF |>
-  mutate(
-    annee_prev = as.numeric(str_extract(fichier, "^\\d{4}")),        # 4 chiffres au début
-    mois_prev  = as.numeric(str_extract(fichier, "(?<=\\d{4}_)\\d{1,2}"))  # chiffres après l'année et le _
-  ) |>
-  filter(annee_prev >= 2015)
-
-
-date_prev_temp_BDF <- date_prev_temp_BDF |>
-  mutate(
-    annee_prev = as.numeric(str_extract(fichier, "^\\d{4}")),  # 4 chiffres au début
-    mois_prev  = as.numeric(str_extract(fichier, "(?<=EMC_)\\d{1,2}(?=_)")), # chiffres après l'année et le _
-    date_courte_d = as.Date(as.character(date_courte)),
-    date_longue_d = as.Date(as.numeric((date_longue)), origin = "1899-12-30")
-  ) |>
-  mutate(
-    date_finale_d = case_when(
-      annee_prev >= 2015 & annee_prev <= 2019 ~ date_courte_d,
-      annee_prev >= 2020 & annee_prev <= 2024 ~ date_longue_d
-    )
-  )
-
-date_prev_BDF<- date_prev_temp_BDF |>
-  select(fichier, trimestre, date_finale_d) |>
-  filter(!is.na(date_finale_d))
-# on supprime les lignes où la variable date_finale_d est manquante (NA) 
-# car pas de publication de l'enquête (pandémie)
-
-print(date_prev_BDF)
 
 
 ###################################
@@ -83,63 +55,74 @@ print(date_prev_BDF)
 
 if (english == 1) {
   try(Sys.setlocale("LC_TIME", "English"), silent = TRUE)
-  #try(Sys.setlocale("LC_TIME", "en_US.UTF-8"), silent = TRUE)
-  prompt_template_BDF <- function(d, q_trim, y_prev) {
+  
+  #Renvoie le bon dirigeant
+  current_boss <- function(type, d) {
+    if (type == "BDF") return(BDF_current_boss(d))
+    if (type == "INSEE") return(INSEE_current_boss(d))
+  }
+  
+  # 
+  prompt_template <- function(type, d, q_trim, y_prev) {
+    boss <- current_boss(type, d)
+    position <- ifelse(type == "BDF", "Governor of the Banque de France" , "Director General of INSEE")
+    current_quarter <- if (q_trim == 1){
+      "first"}
+    else if (q_trim == 2){
+      "second"
+    }else if (q_trim == 3){
+      "third"}else{
+        "fourth"}
+    
+    
     paste0(
-      "Forget previous instructions and previous answers. You are ", BDF_current_boss(d), " (Governor of the Banque de France), giving a speech on France economic outlook. Today is ",
+      "Forget the previous instructions and answers. You are ", boss, ", ", position, 
+      ", giving a speech about the economic outlook of France. Today is ",
       format(d, "%d %B %Y"), ". ",
-      "You will be provided with the latest Banque de France Monthly business survey (Industry, Services and Construction). Using ONLY the information in that document and information available on or before ", 
-      format(d, "%d %B %Y"), ", provide a numeric forecast (decimal percent with sign, e.g. +0.3) for French real GDP growth for Q", q_trim, " ", y_prev, 
-      " and a confidence level (integer 0-100). Output EXACTLY in this format on a single line (no extra text): ",
-      "<forecast> (<confidence>). ",
-      "Example: +0.3 (80). ",
+      "You will be provided with a document with information about the current state and recent past of the French economy. ",
+      "Using only the information in that document and information that was available on or before ", format(d, "%d %B %Y"),
+      ", provide a numeric forecast (decimal percent with sign, e.g., +0.3) for French real GDP growth in the ", current_quarter, " quarter of ", y_prev,
+      " and a confidence level (integer 0–100). Output EXACTLY in this format on a single line (no extra text):\n",
+      "<forecast> (<confidence>)\nExample: +0.3 (80)\n",
       "Do NOT use any information published after ", format(d, "%d %B %Y"), "."
     )
   }
-  
-  prompt_template_INSEE <- function(d, q_trim, y_prev) {
-    paste0(
-      "Forget previous instructions and previous answers. You are ", INSEE_current_boss(d), " director General at INSEE (National Institute of Statistics and Economic Studies), analyzing the French economy. Today is ",
-      format(d, "%d %B %Y"), ". ",
-      "You will be provided with the latest INSEE monthly business tendency surveys (Industry, Services and Construction) for France. Using ONLY the information in these documents and information available on or before ", 
-      format(d, "%d %B %Y"), ", provide a numeric forecast (decimal percent with sign, e.g. +0.3) for French real GDP growth for Q", q_trim, " ", y_prev,
-      " and a confidence level (integer 0-100). Output EXACTLY in this format on a single line (no extra text): ",
-      "<forecast> (<confidence>). ",
-      "Example: +0.3 (80). ",
-      "Do NOT use any information published after ", format(d, "%d %B %Y"), "."
-    )
-  }
-  
   
 } else {
   try(Sys.setlocale("LC_TIME", "French"), silent = TRUE)
-  #try(Sys.setlocale("LC_TIME", "fr_FR.UTF-8"), silent = TRUE)
-  prompt_template_BDF <- function(d, q_trim, y_prev) {
-    paste0(
-      "Oubliez les instructions et réponses précédentes. Vous êtes ", BDF_current_boss(d),  ", Gouverneur de la Banque de France, prononçant un discours sur les perspectives économiques de la France. Nous sommes le ",
-      format(d, "%d %B %Y"), ". ",
-      "Vous recevrez la dernière enquête mensuelle de conjoncture de la Banque de France (Industrie, Services et Batiment). En utilisant UNIQUEMENT les informations contenues dans ce document et celles disponibles au plus tard le ", 
-      format(d, "%d %B %Y"), ", fournissez une prévision numérique (pourcentage décimal avec signe, ex. +0.3) pour la croissance du PIB réel français pour le trimestre ", q_trim, " ", y_prev,
-      " ainsi qu'un niveau de confiance (entier 0-100). Renvoyez EXACTEMENT sur une seule ligne (aucun texte supplémentaire) : ",
-      "<prévision> (<confiance>). ",
-      "Exemple : +0.3 (80). ",
-      "N'utilisez AUCUNE information publiée après le ", format(d, "%d %B %Y"), "."
-    )
+  
+  current_boss <- function(type, d) {
+    if (type == "BDF") return(BDF_current_boss(d))
+    if (type == "INSEE") return(INSEE_current_boss(d))
   }
   
-  prompt_template_INSEE <- function(d, q_trim, y_prev) {
+  prompt_template <- function(type, d, q_trim, y_prev) {
+    boss <- current_boss(type, d)
+    position <- ifelse(type == "BDF","Gouverneur de la Banque de France", "Directeur Général de l'INSEE")  
+    trimestre_actuel <- if (q_trim == 1){
+      "premier"}
+    else if (q_trim == 2){
+      "second"
+    }else if (q_trim == 3){
+      "troisième"}else{
+        "quatrième"}
+    
+    
     paste0(
-      "Oubliez les instructions et réponses précédentes. Vous êtes ", INSEE_current_boss(d),  ", Directeur Général de l'INSEE, analysant l'économie française. Nous sommes le ",
+      "Oubliez les instructions et les réponses précédentes. Vous êtes ", boss, ", ", position,
+      ", qui prononce un discours sur les perspectives économiques de la France. Nous sommes le ",
       format(d, "%d %B %Y"), ". ",
-      "Vous recevrez les dernières enquêtes de conjoncture mensuelles de l'INSEE (EMI, SER, BAT) pour la France. En utilisant UNIQUEMENT les informations contenues dans ces documents et celles disponibles au plus tard le ", 
-      format(d, "%d %B %Y"), ", fournissez une prévision numérique (pourcentage décimal avec signe, ex. +0.3) pour la croissance du PIB réel français pour le trimestre ", q_trim, " ", y_prev,
-      " ainsi qu'un niveau de confiance (entier 0-100). Renvoyez EXACTEMENT sur une seule ligne (aucun texte supplémentaire) : ",
-      "<prévision> (<confiance>). ",
-      "Exemple : +0.3 (80). ",
+      "Vous recevrez un document concernant la situation actuelle et passée de l'économie française. ",
+      "En utilisant UNIQUEMENT les informations contenues dans ce document et celles disponibles au plus tard le ", format(d, "%d %B %Y"),
+      ", fournissez une prévision numérique (pourcentage décimal avec signe, ex. +0.3) de la croissance du PIB réel français pour le ",
+      trimestre_actuel, " trimestre ", y_prev,
+      " et un niveau de confiance (entier 0-100). Renvoyez EXACTEMENT sur une seule ligne (aucun texte supplémentaire) :\n",
+      "<prévision> (<confiance>)\nExemple : +0.3 (80)\n",
       "N'utilisez AUCUNE information publiée après le ", format(d, "%d %B %Y"), "."
     )
   }
 }
+
 
 ###################################
 # Boucle principale BDF
@@ -183,7 +166,7 @@ for (dt in dates) {
   year_current <- as.integer(format(current_date, "%Y"))
   trimestre_index <- if (mois_index %in% c(1,11,12)) 4 else if (mois_index %in% 2:4) 1 else if (mois_index %in% 5:7) 2 else 3
   year_prev <- if (mois_index == 1 && trimestre_index == 4) year_current - 1 else year_current
-  prompt_text <- prompt_template_BDF(current_date, trimestre_index ,
+  prompt_text <- prompt_template("BDF", current_date, trimestre_index ,
                                      year_prev)
   
   # appel à Gemini en intégrant le document voulu
@@ -277,7 +260,7 @@ for (dt in dates) {
   year_current <- as.integer(format(current_date, "%Y"))
   trimestre_index <- if (mois_index %in% c(1,11,12)) 4 else if (mois_index %in% 2:4) 1 else if (mois_index %in% 5:7) 2 else 3
   year_prev <- if (mois_index == 1 && trimestre_index == 4) year_current - 1 else year_current
-  prompt_text <- prompt_template_INSEE(current_date, trimestre_index ,
+  prompt_text <- prompt_template("INSEE", current_date, trimestre_index ,
                                        year_prev)
   
   # appel à Gemini en intégrant le document voulu

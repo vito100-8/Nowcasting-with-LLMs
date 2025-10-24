@@ -190,68 +190,60 @@ get_last_12_insee_docs_by_type <- function(target_date, doc_type, folder_to_sear
   return(full_path)
 }
 
-####################
+#######################
 #LLM_all_inputs
-###################
-
-
-# get_last_doc : retourne le nom du fichier (ex: "EMC_2_2023") le plus récent disponible par rapport à la date où on se place
-get_all_last_doc <- function(date_prev_df, target_date) {
-  # target_date is Date
-  candidats <- date_prev_df %>%
-    filter(date_finale_d <= as.Date(target_date))
-  
-  if (nrow(candidats) == 0) {
-    warning(paste("Aucun document disponible avant", target_date))
-    return(NULL)
+######################
+# Helper function to convert a dataframe to a markdown table string
+df_to_markdown_table <- function(df, title = NULL, max_rows = 50) {
+  if (is.null(df) || nrow(df) == 0) {
+    if (!is.null(title)) {
+      return(paste0("No data available for '", title, "' for this period."))
+    } else {
+      return("No data available for this period.")
+    }
   }
   
-  derniers <- candidats %>%
-    arrange(desc(date_finale_d)) %>%
-    pull(fichier)
+  # Ensure dates are in a consistent, readable format
+  for (col in names(df)) {
+    if (inherits(df[[col]], "Date")) {
+      df[[col]] <- format(df[[col]], "%Y-%m-%d")
+    }
+    # Convert any list-columns to character for table rendering
+    if (is.list(df[[col]])) {
+      df[[col]] <- sapply(df[[col]], function(x) paste(x, collapse = ";"))
+    }
+  }
   
-  return(derniers)
+  # Convert all columns to character for consistent markdown output
+  df <- df %>% mutate(across(everything(), as.character))
+  
+  # If the dataframe is too large, take the last 'max_rows' rows
+  if (nrow(df) > max_rows) {
+    df <- tail(df, max_rows)
+    # Add a note about truncation to the title
+    if (!is.null(title)) {
+      title <- paste0(title, " (showing last ", max_rows, " rows)")
+    } else {
+      title <- paste0("Data (showing last ", max_rows, " rows)")
+    }
+    warning(paste0("Dataframe truncated to last ", max_rows, " rows for markdown conversion."))
+  }
+  
+  # Generate markdown table header
+  header <- paste(names(df), collapse = " | ")
+  separator <- paste(rep("---", ncol(df)), collapse = " | ")
+  
+  # Generate markdown table rows
+  rows <- apply(df, 1, function(row) paste(row, collapse = " | "))
+  
+  # Combine all parts
+  table_string <- ""
+  if (!is.null(title)) {
+    table_string <- paste0("### ", title, "\n\n")
+  }
+  table_string <- paste0(table_string, header, "\n", separator, "\n", paste(rows, collapse = "\n"))
+  return(table_string)
 }
-
-
-# Obtenir depuis le dossier les 3 documents : SER, BAT, et EMI en les cherchant par date
-get_all_last_insee_docs_by_type <- function(target_date, doc_type, folder_to_search) {
-  
-  target_date <- as.Date(target_date)
-  
-  # Format : AAAA_MM_TYPE.pdf
-  pattern <- paste0("^(\\d{4})_(\\d{2})_", doc_type, "\\.pdf$")
-  all_files <- list.files(folder_to_search, pattern = pattern, full.names = FALSE)
-  
-  if (length(all_files) == 0) {
-    warning(paste("Aucun fichier", doc_type, "trouvé dans", folder_to_search))
-    return(NULL)
-  }
-  
-  # Extraction stricte : 4 chiffres + underscore + 2 chiffres
-  file_dates_df <- tibble(
-    filename = all_files,
-    year  = as.integer(str_extract(all_files, "^\\d{4}")),
-    month = as.integer(str_extract(all_files, "(?<=\\d{4}_)\\d{2}"))
-  ) |>
-    mutate(doc_date = ymd(paste(year, month, "01", sep = "-")))
-  
-  doc_possible <- file_dates_df |>
-    filter(doc_date < target_date)
-  
-  if (nrow(doc_possible) == 0) {
-    warning("Aucun document antérieur à la date cible")
-    return(NULL)
-  }
-  
-  most_recent_doc_filename <- doc_possible |>
-    arrange(desc(doc_date)) |>
-    pull(filename)
-  
-  full_path <- path_from_docname(most_recent_doc_filename, folder = folder_to_search) 
-  return(full_path)
-}
-
 
 
 
