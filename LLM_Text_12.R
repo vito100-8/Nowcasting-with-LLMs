@@ -1,7 +1,10 @@
 # Script : Requêtes LLM (Gemini) avec PDF des 12 derniers mois en pièce-jointe 
 
 
-rm(list = ls()) 
+rm(list = ls())  
+source("Library_Nowcasting_LLM.R")
+source("LLM_functions.R")
+source("Script_dates_prev.R")
 
 # Repertoire/ env
 setwd(dirname(getActiveDocumentContext()$path))
@@ -22,15 +25,14 @@ sys_prompt <- ifelse(english == 1,
 
 #Créer un vecteur de date
 dates <- read_xlsx(here("dates_prev.xlsx"))
-dates <- if (is.data.frame(dates_used)) as.Date(dates_used[[1]]) else as.Date(dates_used)
+dates <- if (is.data.frame(dates)) as.Date(dates[[1]]) else as.Date(dates)
 
 
 
 document_folder_BDF <- "docEMC_clean"
 document_folder_INSEE <- "INSEE_Scrap"
 
-# dates (exemple)
-dates <- as.Date(c("2023-03-01", "2023-06-01")) # format aaaa-mm-jj
+
 
 
 # API Key (pour ellmer on utilise API_KEY_GEMINI)
@@ -141,7 +143,7 @@ for (dt in dates) {
   current_date <- as.Date(dt) 
   
   # Récupérer les 12 derniers documents
-  last_12_docs <- get_last_12_doc(date_prev_BDF, current_date)
+  last_12_docs <- get_last_12_doc(current_date)
   
   #Transformer en chemins complets
   all_bdf_docs_to_combine <- map_chr(last_12_docs, path_from_docname, folder = document_folder_BDF)
@@ -320,23 +322,6 @@ print(diff(range(t1, t2)))
 ##################
 #Stats Descriptives
 ###################
-
-#Passage en long pour stat des plus simple à rédiger
-
-to_long <- function(df, source_name) { 
-  df |>
-    pivot_longer(
-      cols = matches("^(forecast|confidence)_\\d+$"),
-      names_to = c(".value", "rep"),
-      names_pattern = "(.*)_(\\d+)$"
-    ) |>
-    mutate(
-      rep = as.integer(rep),
-      forecast = as.numeric(forecast),
-      confidence = as.integer(confidence),
-      source = source_name
-    )
-}
 
 bdf_text_long   <- to_long(df_results_text_12_BDF, "BDF")
 insee_text_long <- to_long(df_results_text_12_INSEE, "INSEE")

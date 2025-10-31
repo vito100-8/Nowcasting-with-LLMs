@@ -135,11 +135,11 @@ results_BDF <- list()
 row_id_BDF <- 1 
 
 t1 <- Sys.time()
-for (dt in df_date$`Date Prevision`) {
+for (dt in as.Date(df_date$`Date Prevision`)) {
   current_date <- as.Date(dt) 
 
   # Trouver le bon pdf et son path
-  docname <- get_next_doc(date_prev_BDF, current_date)
+  docname <- get_next_doc(current_date)
   pdf_path <- path_from_docname(docname, folder = document_folder_BDF)
   
   if (is.null(pdf_path)) {
@@ -228,9 +228,8 @@ row_id_INSEE <- 1
 
 t1 <- Sys.time()
 
-for (dt in dates) {
+for (dt in as.Date(df_date$`Date Prevision`)) {
   current_date <- as.Date(dt) 
-  
   # Trouver les bons pdf, le chemin d'accès et les concaténer
   emi_path <- get_last_insee_docs_by_type(current_date,"EMI",  document_folder_INSEE)
   ser_path <- get_last_insee_docs_by_type(current_date, "SER",document_folder_INSEE)
@@ -315,22 +314,6 @@ print(diff(range(t1, t2)))
 #Stats Descriptives
 ###################
 
-#Passage en long pour stat des plus simple à rédiger
-
-to_long <- function(df, source_name) { 
-  df |>
-    pivot_longer(
-      cols = matches("^(forecast|confidence)_\\d+$"),
-      names_to = c(".value", "rep"),
-      names_pattern = "(.*)_(\\d+)$"
-    ) |>
-    mutate(
-      rep = as.integer(rep),
-      forecast = as.numeric(forecast),
-      confidence = as.integer(confidence),
-      source = source_name
-    )
-}
 
 bdf_text_long   <- to_long(df_results_text_BDF, "BDF")
 insee_text_long <- to_long(df_results_text_INSEE, "INSEE")

@@ -198,23 +198,6 @@ diff(range(t1,t2))
 #Stats Descriptives
 ###################
 
-#Passage en long pour stat des plus simple à rédiger
-
-to_long <- function(df, source_name) { #fonction qui va être appliquée à chaque dataframe
-  df |>
-    pivot_longer(
-      cols = matches("^(forecast|confidence)_\\d+$"),
-      names_to = c(".value", "rep"),
-      names_pattern = "(.*)_(\\d+)$"
-    ) |>
-    mutate(
-      rep = as.integer(rep),
-      forecast = as.numeric(forecast),
-      confidence = as.integer(confidence),
-      source = source_name
-    )
-}
-
 bdf_long   <- to_long(df_results_BDF, "BDF")
 insee_long <- to_long(df_results_INSEE, "INSEE")
 

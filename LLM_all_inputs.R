@@ -183,13 +183,14 @@ t1 <- Sys.time()
 for (dt in dates) {
   current_date <- as.Date(dt) 
   
-  # Transformer les données en text lisible
-  bdf_data_markdown <- df_to_markdown_table(df_enq_BDF, title = "Banque de France Survey Data")
+  df_enq_BDF_filtered <- df_enq_BDF |> filter(dates < current_date)
+  
+  # Transformer les données filtrées en texte Markdown lisible
+  bdf_data_markdown <- df_to_markdown_table(df_enq_BDF_filtered, title = "Banque de France Survey Data")
   contents_bdf_data <- ContentText(bdf_data_markdown)
   
-  typeof(bdf_data_markdown)
   # Trouver le bon pdf et son path
-  docname <- get_next_doc(dates, current_date)
+  docname <- get_next_doc(current_date)
   pdf_path <- path_from_docname(docname, folder = document_folder_BDF)
   
   if (is.null(pdf_path)) {
@@ -282,9 +283,10 @@ t1 <- Sys.time()
 for (dt in dates) {
   current_date <- as.Date(dt) 
   
+  df_enq_INSEE_filtered <- df_enq_INSEE |> filter(dates < current_date)
   
   #Données en texte
-  insee_data_markdown <- df_to_markdown_table(df_enq_INSEE, title = "INSEE Survey Data")
+  insee_data_markdown <- df_to_markdown_table(df_enq_INSEE_filtered, title = "INSEE Survey Data")
   contents_INSEE_data <- ContentText(insee_data_markdown)
   
   # Trouver les bons pdf, le chemin d'accès et les concaténer
@@ -310,8 +312,8 @@ for (dt in dates) {
   year_current <- as.integer(format(current_date, "%Y"))
   trimestre_index <- if (mois_index %in% c(1,11,12)) 4 else if (mois_index %in% 2:4) 1 else if (mois_index %in% 5:7) 2 else 3
   year_prev <- if (mois_index == 1 && trimestre_index == 4) year_current - 1 else year_current
-  prompt_text <- paste0(prompt_template("INSEE", current_date, trimestre_index ,
-                                       year_prev), "\n", contents_INSEE_data)
+  prompt_text <- prompt_template("INSEE", current_date, trimestre_index ,
+                                 year_prev)
   
   # appel à Gemini en intégrant le document voulu
   out_list <- future_lapply(seq_len(n_repro), function(i) {
@@ -370,23 +372,6 @@ print(diff(range(t1, t2)))
 ##################
 #Stats Descriptives
 ###################
-
-#Passage en long pour stat des plus simple à rédiger
-
-to_long <- function(df, source_name) { 
-  df |>
-    pivot_longer(
-      cols = matches("^(forecast|confidence)_\\d+$"),
-      names_to = c(".value", "rep"),
-      names_pattern = "(.*)_(\\d+)$"
-    ) |>
-    mutate(
-      rep = as.integer(rep),
-      forecast = as.numeric(forecast),
-      confidence = as.integer(confidence),
-      source = source_name
-    )
-}
 
 bdf_text_long   <- to_long(df_results_all_BDF, "BDF")
 insee_text_long <- to_long(df_results_all_INSEE, "INSEE")
