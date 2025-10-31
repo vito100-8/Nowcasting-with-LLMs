@@ -20,22 +20,36 @@ get_last_doc <- function(date_prev_df, target_date) {
   return(dernier)
 }
 
-# path_from_docname : renvoie chemin complet vers le PDF local 
+# path_from_docname : renvoie chemin complet vers le ou les PDF local/locaux
 path_from_docname <- function(doc_name, folder) {
   if (is.null(doc_name)) return(NULL)
   
-  if (!grepl("\\.pdf$", doc_name, ignore.case = TRUE))
-    doc_name <- paste0(doc_name, ".pdf")
+  # Si vecteur de plusieurs noms de docs et non pas un seul
+  full_paths <- sapply(doc_name, function(single_doc_name) {
+    if (!grepl("\\.pdf$", single_doc_name, ignore.case = TRUE)) {
+      single_doc_name <- paste0(single_doc_name, ".pdf")
+    }
+    
+    path <- file.path(folder, single_doc_name)
+    
+    if (!file.exists(path)) {
+      warning("Fichier introuvable : ", path)
+      return(NA_character_) # Retourne NA pour les fichiers introuvables
+    }
+    
+    return(normalizePath(path, winslash = "/", mustWork = TRUE))
+  })
   
-  path <- file.path(folder, doc_name)
+  # Enlever les fichiers qui n'ont éventuellement pas été trouvés
+  full_paths <- full_paths[!is.na(full_paths)]
   
-  if (!file.exists(path)) {
-    warning("Fichier introuvable : ", path)
-    return(NULL)
+  if (length(full_paths) == 0) {
+    return(NULL) # Si aucun fichier trouvable
   }
   
-  return(normalizePath(path, winslash = "/", mustWork = TRUE))
+  return(full_paths)
 }
+
 
 
 #Dirigeant de l'INSEE selon la date
@@ -75,10 +89,10 @@ merge_pdfs <- function(files, output_path) {
 ##########
 
 #Rechercher l'EMC du lendemain de la date de prévision
-get_next_doc <- function(date_prev_df, cur_day) {
+get_next_doc <- function(cur_day) {
   # target_date is Date of the corresponding EMC
-  target_date <- as.Date(cur_day) + 1L
-  next_doc <- date_prev_df |>
+  target_date <- cur_day + 1L
+  next_doc <- date_publi_prev |>
     filter(date_finale_d == as.Date(target_date))
   return(next_doc$fichier)
 }
@@ -132,19 +146,19 @@ get_last_insee_docs_by_type <- function(target_date, doc_type, folder_to_search)
 ################
 
 # get_last_doc : retourne le nom du fichier (ex: "EMC_2_2023") le plus récent disponible par rapport à la date où on se place
-get_last_12_doc <- function(date_prev_df, target_date) {
+get_last_12_doc <- function(target_date) {
   # target_date is Date
-  candidats <- date_prev_df %>%
-    filter(date_finale_d <= as.Date(target_date))
+  candidats <- date_publi_prev |>
+    filter(date_finale_d <= as.Date(target_date) + 1L)
   
   if (nrow(candidats) == 0) {
     warning(paste("Aucun document disponible avant", target_date))
     return(NULL)
   }
   
-  derniers <- candidats %>%
-    arrange(desc(date_finale_d)) %>%
-    slice_head(n = 12) %>%   #prendre les 12 dernières enquêtes BDF
+  derniers <- candidats |>
+    arrange(desc(date_finale_d)) |>
+    slice_head(n = 12) |>   #prendre les 12 dernières enquêtes BDF
     pull(fichier)
   
   return(derniers)
@@ -193,7 +207,7 @@ get_last_12_insee_docs_by_type <- function(target_date, doc_type, folder_to_sear
 #######################
 #LLM_all_inputs
 ######################
-# Helper function to convert a dataframe to a markdown table string
+# Fonction pour transformer un df en un markdown (lisible par ellmer)
 df_to_markdown_table <- function(df, title = NULL, max_rows = 50) {
   if (is.null(df) || nrow(df) == 0) {
     if (!is.null(title)) {
@@ -203,7 +217,7 @@ df_to_markdown_table <- function(df, title = NULL, max_rows = 50) {
     }
   }
   
-  # Ensure dates are in a consistent, readable format
+  # Vérifier que les dates sont dans un format lisible
   for (col in names(df)) {
     if (inherits(df[[col]], "Date")) {
       df[[col]] <- format(df[[col]], "%Y-%m-%d")
@@ -214,10 +228,10 @@ df_to_markdown_table <- function(df, title = NULL, max_rows = 50) {
     }
   }
   
-  # Convert all columns to character for consistent markdown output
-  df <- df %>% mutate(across(everything(), as.character))
+  # Convertir les colonnes en charactères 
+  df <- df |> mutate(across(everything(), as.character))
   
-  # If the dataframe is too large, take the last 'max_rows' rows
+  # On choisit aussi un nombre max de lignes à afficher pour avoir une limite à la taille du prompt
   if (nrow(df) > max_rows) {
     df <- tail(df, max_rows)
     # Add a note about truncation to the title
@@ -229,14 +243,14 @@ df_to_markdown_table <- function(df, title = NULL, max_rows = 50) {
     warning(paste0("Dataframe truncated to last ", max_rows, " rows for markdown conversion."))
   }
   
-  # Generate markdown table header
+  # Header
   header <- paste(names(df), collapse = " | ")
   separator <- paste(rep("---", ncol(df)), collapse = " | ")
   
-  # Generate markdown table rows
+  # Lignes
   rows <- apply(df, 1, function(row) paste(row, collapse = " | "))
   
-  # Combine all parts
+  # Combiner le tout
   table_string <- ""
   if (!is.null(title)) {
     table_string <- paste0("### ", title, "\n\n")
@@ -294,7 +308,7 @@ get_docs_to_merge <- function(current_date,
   
   # Boucle pour récupérer autant de documents EMC que nécessaire
   for (j in seq_len(months_in_quarter)) {
-    next_doc_name <- get_next_doc(date_prev_BDF, current_ref_date)
+    next_doc_name <- get_next_doc(current_ref_date)
 
       full_path <- path_from_docname(next_doc_name, folder = document_folder_BDF)
       BDF_docs_to_merge <- c(BDF_docs_to_merge, full_path)
@@ -388,7 +402,25 @@ find_pib_index <- function(cur_date) {
   if (length(future_idx) >= 1) return(future_idx[1])
   integer(0)
 }
+#####################
+# STATS DES
+#####################
+#Passage en long pour stat des plus simple à rédiger
 
+to_long <- function(df, source_name) { 
+  df |>
+    pivot_longer(
+      cols = matches("^(forecast|confidence)_\\d+$"),
+      names_to = c(".value", "rep"),
+      names_pattern = "(.*)_(\\d+)$"
+    ) |>
+    mutate(
+      rep = as.integer(rep),
+      forecast = as.numeric(forecast),
+      confidence = as.integer(confidence),
+      source = source_name
+    )
+}
 
 ################################
 # FONCTION LLM + ECONOMETRIE
