@@ -1,39 +1,20 @@
 #Script : Requêtes LLM (Gemini) avec PDF, TS et recherches
 
-
 rm(list = ls())  
 source("Library_Nowcasting_LLM.R")
 source("LLM_functions.R")
 source("Script_dates_prev.R")
+source("Parametres_generaux.R")
 
+#######################
+#Paramètres spécifiques
+#######################
 
-# Repertoire/ env
-setwd(dirname(getActiveDocumentContext()$path))
-here::i_am("LLM_Text.R")
-load_dot_env('.env')   
-
-###################################
-# Paramètres initiaux
-###################################
-
-#Paramètres généraux
-english <- 1
-temp_LLM <- 0.7
-n_repro <- 2
+#Systeme prompt
 sys_prompt <- ifelse(english == 1,
-                     "You will act as the economic agent you are told to be. Answer based on your knowledge and the document provided in less than 200 words, do not invent facts." ,
-                     "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et du document fourni, n'inventez pas de faits.")
-
-document_folder_BDF <- "docEMC_clean"
-document_folder_INSEE <- "INSEE_Scrap"
-
-
-#Dates utilisées
-dates <- read_xlsx(here("dates_prev.xlsx"))
-dates <- if (is.data.frame(dates)) as.Date(dates[[1]]) else as.Date(dates_used)
-
-# API Key (pour ellmer on utilise API_KEY_GEMINI)
-cle_API <- Sys.getenv("API_KEY_GEMINI")
+                     "You will act as the economic agent you are told to be. Answer based on your knowledge and the document provided in less than 200 words. You will use only the information available as of the forecast date, do not invent facts." ,
+                     "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et du document fourni. Vous n'utiliserez que l'information disponible à la date du jour de la prévision, n'inventez pas de faits."
+)
 
 #Initialisation LLM
 if (cle_API == "") stop("Clé API Gemini manquante. Ajoute API_KEY_GEMINI dans env/.Renviron")
@@ -56,13 +37,6 @@ df_ISMA <- read_xlsx("Data_BDF_INSEE.xlsx", sheet = "mensuel ISMA")
 df_enq_BDF <- read.xlsx("Data_BDF_INSEE.xlsx", sheet = "ENQ_BDF")
 df_enq_INSEE <- read_xlsx("Data_BDF_INSEE.xlsx", sheet = "ENQ_INSEE")
 
-#Nettoyage de df_enq_BDF
-
-df_enq_BDF <- df_enq_BDF |> 
-  slice(6:433) |> 
-  mutate(dates = `Titre.:`, , .keep = "unused") |>
-  select(dates, everything())
-
 
 #Nettoyage de df_enq_INSEE
 
@@ -76,19 +50,6 @@ df_enq_INSEE <- df_enq_INSEE |>
                               "oct\\." = "oct", "nov\\." = "nov", "déc\\." = "dec"))
   ) |>
   mutate(dates = as.Date(parse_date_time(dates, orders = "b Y"), origin = "1970-01-01"))
-
-new_names <- paste0(names(df_enq_INSEE), " : ", df_enq_INSEE[1, ])
-colnames(df_enq_INSEE) <- new_names
-
-
-df_enq_INSEE <- df_enq_INSEE |>
-  slice(2:430)|>
-  mutate(
-    dates = `dates : NA`, .keep = "unused") |>
-  select(dates, everything())
-
-
-
 
 
 
@@ -180,10 +141,11 @@ results_BDF <- list()
 row_id_BDF <- 1 
 
 t1 <- Sys.time()
-for (dt in dates) {
+for (dt in as.Date(dates$`Date Prevision`)) {
   current_date <- as.Date(dt) 
   
-  df_enq_BDF_filtered <- df_enq_BDF |> filter(dates < current_date)
+  df_enq_BDF_filtered <- df_enq_BDF |>
+    filter(dates < current_date)
   
   # Transformer les données filtrées en texte Markdown lisible
   bdf_data_markdown <- df_to_markdown_table(df_enq_BDF_filtered, title = "Banque de France Survey Data")
@@ -280,7 +242,7 @@ row_id_INSEE <- 1
 
 t1 <- Sys.time()
 
-for (dt in dates) {
+for (dt in as.Date(dates$`Date Prevision`)) {
   current_date <- as.Date(dt) 
   
   df_enq_INSEE_filtered <- df_enq_INSEE |> filter(dates < current_date)

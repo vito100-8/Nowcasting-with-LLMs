@@ -5,38 +5,16 @@ rm(list = ls())
 source("Library_Nowcasting_LLM.R")
 source("LLM_functions.R")
 source("Script_dates_prev.R")
+source("Parametres_generaux.R")
 
+#######################################
+#Initialisation paramètres spécifiques
+#######################################
 
-# Répertoire de travail actif
-
-setwd(dirname(getActiveDocumentContext()$path))
-
-here::i_am("LLM_noText.R")
-
-load_dot_env('.env')
-
-###################################################
-#INITIALISATION PARAMETRES
-###################################################
-
-
-#Paramètres généraux
-english <- 1 # 1 si prompt en anglais
-temp_LLM <- 0.7  # Niveau de créativité des réponses 0.3/0.7/1.5 (castro-Leibovici)
-n_repro <- 2  # Nombre de prévisions générées par date*
+#Systeme prompt
 sys_prompt <- ifelse(english == 1,
                      "You will act as the economic agent you are told to be. Answer based on your knowledge and researches in less than 200 words, do not invent facts." ,
                      "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots à l'aide de vos connaissances et de vos recherches, n'inventez pas de faits.")
-
-
-# Initialisation des dates
-df_date <- as.Date(c("2012-01-03")) #POUR TESTER : à changer manuellement
-
-#Dates utilisées
-df_date <- read_xlsx(here("dates_prev.xlsx"))
-
-# API Key (pour ellmer on utilise API_KEY_GEMINI)
-cle_API <- Sys.getenv("API_KEY_GEMINI")
 
 #Initialisation LLM
 if (cle_API == "") stop("Clé API Gemini manquante. Ajoute API_KEY_GEMINI dans env/.Renviron")
@@ -46,7 +24,6 @@ chat_gemini <- chat_google_gemini( system_prompt = sys_prompt,
                                    model = "gemini-2.5-pro", 
                                    params(temperature = temp_LLM, max_tokens = 5000)
 )
-
 
 #####################
 # QUESTIONS A POSER
@@ -125,190 +102,100 @@ if (english == 1) {
 # BOUCLE PRINCIPALE
 ##################
 
-results_all <- list()
-row_id <- 1
+#Regex pattern
+forecast_confidence_pattern <- "([+-]?\\d+\\.?\\d*)\\s*\\(\\s*(\\d{1,3})\\s*\\)"
+
+# Initialisation des listes de résultats séparées
+results_BDF_list <- list()
+row_id_BDF <- 1
+
+results_INSEE_list <- list()
+row_id_INSEE <- 1
 
 t1 <- Sys.time()
 
-for (dt in df_date) {
-  current_date <- as.Date(dt)
-  mois_index <- as.integer(format(current_date, "%m"))
-  year_current <- as.integer(format(current_date, "%Y"))
-  trimestre_index <- if (mois_index %in% c(1,11,12)) 4 else if (mois_index %in% 2:4) 1 else if (mois_index %in% 5:7) 2 else 3
-  year_prev <- if (mois_index == 1 && trimestre_index == 4) year_current - 1 else year_current
-  
-  for (type in c("BDF", "INSEE")) {
+for (dt in as.Date(dates$`Date Prevision`)) {
+    current_date <- as.Date(dt)
+    mois_index <- as.integer(format(current_date, "%m"))
+    year_current <- as.integer(format(current_date, "%Y"))
+    trimestre_index <- if (mois_index %in% c(1,11,12)) 4 else if (mois_index %in% 2:4) 1 else if (mois_index %in% 5:7) 2 else 3
+    year_prev <- if (mois_index == 1 && trimestre_index == 4) year_current - 1 else year_current
     
-    q_text <- prompt_template(type, current_date, trimestre_index, year_prev)
-    
-    outs <- future_lapply(seq_len(n_repro), function(i) {
-      tryCatch({
-        resp <- chat_gemini$chat(q_text)
-        return(resp)
-      }, error = function(e) {
-        message("API error: ", conditionMessage(e))
-        return(NA_character_)
+    for (type in c("BDF", "INSEE")) {
+      
+      q_text <- prompt_template(type, current_date, trimestre_index, year_prev)
+      
+      outs <- future_lapply(seq_len(n_repro), function(i) {
+        tryCatch({
+          resp <- chat_gemini$chat(q_text)
+          return(resp)
+        }, error = function(e) {
+          message("API error for type ", type, " on date ", current_date, ": ", conditionMessage(e))
+          return(NA_character_)
+        })
+      }, future.seed = TRUE)
+      
+      textes <- sapply(outs, function(x) {
+        if (is.list(x) && !is.null(x$text)) {
+          return(x$text)
+        } else if (is.character(x)) {
+          return(x)
+        } else {
+          return(NA_character_)
+        }
       })
-    }, future.seed = TRUE)
-    
-    textes <- unlist(outs)
-    parsed <- lapply(textes, function(txt) {
-      m <- regmatches(txt, regexec("([+-]?\\d+\\.?\\d*)\\s*\\(\\s*(\\d{1,3})\\s*\\)", txt))
-      if (length(m[[1]]) >= 3) {
-        list(forecast = as.numeric(m[[1]][2]), confidence = as.integer(m[[1]][3]), raw = txt)
-      } else {
-        list(forecast = NA_real_, confidence = NA_integer_, raw = txt)
+      
+      parsed <- lapply(textes, function(txt) {
+        if (is.null(txt) || length(txt) == 0) return(list(forecast = NA_real_, confidence = NA_integer_, raw = NA_character_))
+        m <- regmatches(txt, regexec(forecast_confidence_pattern, txt)) # Utilisation du pattern défini
+        if (length(m[[1]]) >= 3) {
+          list(forecast = as.numeric(m[[1]][2]), confidence = as.integer(m[[1]][3]), raw = txt)
+        } else {
+          list(forecast = NA_real_, confidence = NA_integer_, raw = txt)
+        }
+      })
+      
+      #Df temporaire qui va stocker tous les résultats et les redistribuer à la bonne institution
+      df_tmp <- data.frame(
+        Date = as.character(current_date),
+        Type = type,
+        Prompt = q_text,
+        stringsAsFactors = FALSE
+      )
+      
+      for (i in seq_len(n_repro)) {
+        df_tmp[[paste0("forecast_", i)]]  <- parsed[[i]]$forecast
+        df_tmp[[paste0("confidence_", i)]] <- parsed[[i]]$confidence
+        df_tmp[[paste0("answer_", i)]]     <- parsed[[i]]$raw
       }
-    })
-    
-    df_tmp <- data.frame(
-      Date = as.character(current_date),
-      Type = type,
-      Prompt = q_text,
-      stringsAsFactors = FALSE
-    )
-    
-    for (i in seq_len(n_repro)) {
-      df_tmp[[paste0("forecast_", i)]]  <- parsed[[i]]$forecast
-      df_tmp[[paste0("confidence_", i)]] <- parsed[[i]]$confidence
-      df_tmp[[paste0("answer_", i)]]     <- parsed[[i]]$raw
+      
+      # Condition pour bien matcher le df temp aux lists
+      if (type == "BDF") {
+        results_BDF_list[[row_id_BDF]] <- df_tmp
+        row_id_BDF <- row_id_BDF + 1
+      } else if (type == "INSEE") {
+        results_INSEE_list[[row_id_INSEE]] <- df_tmp
+        row_id_INSEE <- row_id_INSEE + 1
+      }
+      Sys.sleep(0.5)
     }
-    
-    results_all[[row_id]] <- df_tmp
-    row_id <- row_id + 1
-    Sys.sleep(0.5)
   }
-}
+  
+  # Combinaison des dataframes finaux pour BDF et INSEE
+  df_results_BDF <- do.call(rbind, results_BDF_list)
+  df_results_INSEE <- do.call(rbind, results_INSEE_list)
+  
+  # Sauvegarde des deux dataframes séparément
+  write.xlsx(df_results_BDF, file = "resultats_BDF.xlsx", sheetName = 'prevision', rowNames = FALSE)
+  cat("Les résultats pour la BDF ont été sauvegardés dans le fichier : resultats_BDF.xlsx\n")
+  
+  write.xlsx(df_results_INSEE, file = "resultats_INSEE.xlsx", sheetName = 'prevision', rowNames = FALSE)
+  cat("Les résultats pour l'INSEE ont été sauvegardés dans le fichier : resultats_INSEE.xlsx\n")
+  
+  t2 <- Sys.time()
+  diff(range(t1,t2))
 
-# Combine final dataframe
-df_results <- do.call(rbind, results_all)
-
-# Sauvegarde unique
-nom_fichier <- paste0("resultats_noText.xlsx")
-write.xlsx(df_results, file = nom_fichier, sheetName = 'prevision', rowNames = FALSE)
-
-cat("Les résultats (BDF et INSEE) ont été sauvegardés dans le fichier :", nom_fichier, "\n")
-
-t2 <- Sys.time()
-diff(range(t1,t2))
-
-
-
-##################
-#Stats Descriptives
-###################
-
-bdf_long   <- to_long(df_results_BDF, "BDF")
-insee_long <- to_long(df_results_INSEE, "INSEE")
-
-both_long <- bind_rows(bdf_long, insee_long)
-
-
-# Stats descriptives simples
-stats_des <- both_long |>
-  group_by(Date, source) |>
-  summarise(
-    Moyenne = mean(forecast, na.rm = TRUE),
-    Médiane = median(forecast, na.rm = TRUE),
-    Variance = var(forecast, na.rm = TRUE),
-    EcartType = sd(forecast, na.rm = TRUE),
-    Skewness = skewness(forecast, na.rm = TRUE),
-    Kurtosis = kurtosis(forecast, na.rm = TRUE),
-    Moyenne_Confiance = mean(confidence, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-#Corrélation entre les prévisions
-
-df_BDF   <- df_results_BDF |> select(Date, starts_with("forecast_"))
-df_INSEE <- df_results_INSEE |> select(Date, starts_with("forecast_"))
-
-colnames(df_BDF)[-1]   <- paste0("BDF_",   seq_along(colnames(df_BDF)[-1]))
-colnames(df_INSEE)[-1] <- paste0("INSEE_", seq_along(colnames(df_INSEE)[-1]))
-
-df_BDF <- df_BDF |> 
-  select(!Date)
-
-df_INSEE <- df_INSEE |> 
-  select(!Date)
-
-
-BDF_vec   <- rowMeans(df_BDF, na.rm = TRUE)
-INSEE_vec <- rowMeans(df_INSEE, na.rm = TRUE)
-
-
-correlation <- cor(BDF_vec, INSEE_vec, method = "spearman") ## à revoir/vérifier avec plus d'observations parce que affiche 1
-#normalement ok :  moyennes à chaque date de forecast (testées avec 4 dates, output correlation =~ 0.889)
-
-
-#autre moyen (meilleur ?) : correlation within date
-
-df_BDF_long <- df_results_BDF |>
-  pivot_longer(cols = starts_with("forecast_"), names_to = "repro", values_to = "BDF_forecast") |>
-  select("Date", "repro","BDF_forecast")
-
-df_INSEE_long <- df_results_INSEE |>
-  pivot_longer(cols = starts_with("forecast_"), names_to = "repro", values_to = "INSEE_forecast") |>
-  select("Date", "repro","INSEE_forecast")
-
-df_merged <- df_BDF_long |>
-  inner_join(df_INSEE_long, by = c("Date", "repro"))
-
-cor(df_merged$BDF_forecast, df_merged$INSEE_forecast, method = "spearman") #corr =~ 0.64 obtenue
-
-
-#Test de moyenne entre BDF et INSEE
-t.test_BDF <- df_BDF |>
-  select(!Date)
-t.test_INSEE <- df_INSEE |>
-  select(!Date)
-
-t.test(t.test_BDF, t.test_INSEE, var.equal = FALSE) 
-# En supposant d'après les résultats précédent (mais à confirmer 
-# avec un plus gros échantillon) que la variances est différente entre les deux
-
-
-
-
-############
-#GRAPHIQUES
-###########
-
-#Distribution  des prev selon BDF/INSEE pour chaque date : violin (((à voir lequel plus pertinent)))
-ggplot(both_long, aes(x = source, y = as.numeric(forecast), fill = source)) +
-  geom_violin(alpha = 0.6, trim = FALSE) +
-  facet_wrap(~ Date, scales = "free_y") +
-  labs(
-    title = "Distribution des prévisions par organisme",
-    y = "Prévision",
-    x = "Organisme"
-  ) +
-  theme_minimal()
-
-# Boxplot
-ggplot(both_long, aes(x = source, y = as.numeric(forecast), fill = source)) +
-  geom_boxplot(alpha = 0.7, outlier.shape = 16, outlier.size = 1.5) +
-  facet_wrap(~ Date, scales = "free_y") +
-  labs(
-    title = "Distribution des prévisions par organisme (Boxplot)",
-    y = "Prévision",
-    x = "Organisme"
-  ) +
-  theme_minimal()
-
-#Densité
-ggplot(both_long, aes(x = as.numeric(forecast), fill = source, color = source)) +
-  geom_density(alpha = 0.4) +
-  facet_wrap(~ Date, scales = "free") +
-  labs(
-    title = "Distribution des prévisions BDF vs INSEE",
-    x = "Prévision",
-    y = "Densité"
-  ) +
-  theme_minimal()
-
-
-
+  
 ##############################
 # Comparaison FR vs EN
 ############################
@@ -334,7 +221,7 @@ both_long_fr <- both_long_fr |> mutate("language" = "FR")
 both_long_en_fr <- bind_rows(both_long, both_long_fr) |>
   select(Date, rep:language)
 
-  
+
 
 # Stats descriptives par date, source et langue
 
@@ -369,7 +256,6 @@ diff_langue_moy <- diff_langue_date |>
   )
 
 print(diff_langue_moy)
-
 
 
 

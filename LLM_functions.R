@@ -1,5 +1,11 @@
 ## FONCTION UTILITAIRES ##
 
+rm(list = ls())  
+source("Library_Nowcasting_LLM.R")
+source("Script_dates_prev.R")
+source("Parametres_generaux.R")
+
+
 #############
 #Multi-usages
 ############
@@ -103,6 +109,9 @@ get_last_insee_docs_by_type <- function(target_date, doc_type, folder_to_search)
   
   target_date <- as.Date(target_date)
   
+  #Chercher l'enquête du mois précédent (rollback ramène au dernier jour du mois d'avant)
+  desired_date <- rollback(target_date)
+  
   # Format : AAAA_MM_TYPE.pdf
   pattern <- paste0("^(\\d{4})_(\\d{2})_", doc_type, "\\.pdf$")
   all_files <- list.files(folder_to_search, pattern = pattern, full.names = FALSE)
@@ -120,8 +129,9 @@ get_last_insee_docs_by_type <- function(target_date, doc_type, folder_to_search)
   ) |>
     mutate(doc_date = ymd(paste(year, month, "01", sep = "-")))
   
+  #On cherche l'enquête du mois d'avant qui, par transformation, sera toujours au 1er du mois 
   doc_possible <- file_dates_df |>
-    filter(doc_date < target_date)
+    filter(doc_date <= desired_date)
   
   if (nrow(doc_possible) == 0) {
     warning("Aucun document antérieur à la date cible")
@@ -147,6 +157,7 @@ get_last_insee_docs_by_type <- function(target_date, doc_type, folder_to_search)
 
 # get_last_doc : retourne le nom du fichier (ex: "EMC_2_2023") le plus récent disponible par rapport à la date où on se place
 get_last_12_doc <- function(target_date) {
+
   # target_date is Date
   candidats <- date_publi_prev |>
     filter(date_finale_d <= as.Date(target_date) + 1L)
@@ -170,6 +181,10 @@ get_last_12_insee_docs_by_type <- function(target_date, doc_type, folder_to_sear
   
   target_date <- as.Date(target_date)
   
+  
+  #Chercher l'enquête du mois précédent (rollback ramène au dernier jour du mois d'avant)
+  desired_date <- rollback(target_date)
+  
   # Format : AAAA_MM_TYPE.pdf
   pattern <- paste0("^(\\d{4})_(\\d{2})_", doc_type, "\\.pdf$")
   all_files <- list.files(folder_to_search, pattern = pattern, full.names = FALSE)
@@ -188,7 +203,7 @@ get_last_12_insee_docs_by_type <- function(target_date, doc_type, folder_to_sear
     mutate(doc_date = ymd(paste(year, month, "01", sep = "-")))
   
   doc_possible <- file_dates_df |>
-    filter(doc_date < target_date)
+    filter(doc_date < desired_date)
   
   if (nrow(doc_possible) == 0) {
     warning("Aucun document antérieur à la date cible")
@@ -265,21 +280,20 @@ df_to_markdown_table <- function(df, title = NULL, max_rows = 50) {
 #LLM_rolling_text
 ######################
 
-get_docs_to_merge <- function(current_date, 
+get_docs_to_merge <- function(date_to_use, 
                               df_date, 
-                              date_prev_BDF, 
-                              document_folder_BDF = "./docEMC_clean/",
-                              document_folder_INSEE = "./INSEE_Scrap/",
-                              output_folder_BDF = "./BDF_files_used/",
-                              output_folder_INSEE = "./INSEE_files_used/") {
-  
-  # --- sécurité et prérequis
+                              document_folder_BDF,
+                              document_folder_INSEE ,
+                              output_folder_BDF,
+                              output_folder_INSEE) {
+
+  #sécurité 
   if (!dir.exists(output_folder_BDF)) dir.create(output_folder_BDF, recursive = TRUE)
   if (!dir.exists(output_folder_INSEE)) dir.create(output_folder_INSEE, recursive = TRUE)
   
   # identification du trimestre et du rang dans le trimestre
-  m <- month(current_date)
-  y <- year(current_date)
+  m <- month(date_to_use)
+  y <- year(date_to_use)
   
   if (m == 1) {
     # janvier -> dernier trimestre de l'année précédente
@@ -294,9 +308,8 @@ get_docs_to_merge <- function(current_date,
   
   message(sprintf("Date: %s -> T%d (%d) mois dans le trimestre", 
                   format(current_date, "%Y-%m-%d"), q_trim, months_in_quarter))
-  
-  
-  # construire la séquence des mois du trimestre (ex : q_trim = 1 alor de  Jan-Mar) -> Boucle INSEE
+ 
+  # construire la séquence des mois du trimestre (ex : q_trim = 1 alor de  Jan-Mar)
   quarter_first_month <- (q_trim - 1) * 3 + 1
   quarter_months <- quarter_first_month:(quarter_first_month + 2)
   # on sélectionne les mois voulus selon la date (ordre ancien->récent)
@@ -304,12 +317,12 @@ get_docs_to_merge <- function(current_date,
   
  #BOUCLE BDF
   BDF_docs_to_merge <- c()
-  current_ref_date <- current_date
-  
-  # Boucle pour récupérer autant de documents EMC que nécessaire
-  for (j in seq_len(months_in_quarter)) {
-    next_doc_name <- get_next_doc(current_ref_date)
+  current_ref_date <- date_to_use
 
+  # Boucle pour récupérer autant de documents EMC que nécessaire
+  for (j in months_to_fetch) {
+    
+    next_doc_name <- get_next_doc(current_ref_date)
       full_path <- path_from_docname(next_doc_name, folder = document_folder_BDF)
       BDF_docs_to_merge <- c(BDF_docs_to_merge, full_path)
       

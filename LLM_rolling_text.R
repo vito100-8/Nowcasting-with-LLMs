@@ -4,49 +4,32 @@ rm(list = ls())
 source("Library_Nowcasting_LLM.R")
 source("LLM_functions.R")
 source("Script_dates_prev.R")
+source("Parametres_generaux.R")
 
+#######################
+#Paramètres spécifiques
+#######################
 
-
-
-setwd(dirname(getActiveDocumentContext()$path))
-here::i_am("LLM_rolling_text.R") 
-load_dot_env('.env')
-
-
-
-###################################
-# Paramètres initiaux 
-###################################
-
-# Paramètres généraux
-english <- 1
-temp_LLM <- 0.7
-n_repro <- 2
+#Systeme prompt
 sys_prompt <- ifelse(english == 1,
                      "You will act as the economic agent you are told to be. Answer based on your knowledge and the document provided in less than 200 words. You will use only the information available as of the forecast date, do not invent facts." ,
-                     "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et du document fourni. Vous n'utiliserez que l'information disponible à la date du jour de la prévision, n'inventez pas de faits.")
-# Dates utilisées
- df_date <- read_xlsx(here("dates_prev.xlsx"))
+                     "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et du document fourni. Vous n'utiliserez que l'information disponible à la date du jour de la prévision, n'inventez pas de faits."
+)
 
+#Initialisation LLM
+if (cle_API == "") stop("Clé API Gemini manquante. Ajoute API_KEY_GEMINI dans env/.Renviron")
+chat_gemini <- chat_google_gemini( system_prompt = sys_prompt,
+                                   base_url = "https://generativelanguage.googleapis.com/v1beta/", 
+                                   api_key = cle_API, 
+                                   model = "gemini-2.5-pro", 
+                                   params(temperature = temp_LLM, max_tokens = 5000)
+)
 
 document_folder_BDF <- "docEMC_clean"
 document_folder_INSEE <- "INSEE_Scrap"
 output_folder_BDF <- "BDF_files_used"
 output_folder_INSEE <- "INSEE_files_used"
 
-# API Key
-cle_API <- Sys.getenv("API_KEY_GEMINI")
-
-# Initialisation LLM
-if (cle_API == "") stop("Clé API Gemini manquante")
-
-
-chat_gemini <- chat_google_gemini( system_prompt = sys_prompt,
-                                   base_url = "https://generativelanguage.googleapis.com/v1beta/",
-                                   api_key = cle_API,
-                                   model = "gemini-2.5-pro",
-                                   params(temperature = temp_LLM, max_tokens = 5000)
-)
 
 
 ###################################
@@ -122,9 +105,9 @@ if (english == 1) {
   }
 }
 
-###################################
-# Boucle principale BDF 
-###################################
+####################
+# Boucle principale
+#####################
 
 forecast_confidence_pattern <- "([+-]?\\d+\\.?\\d*)\\s*\\(\\s*(\\d{1,3})\\s*\\)"
 results_BDF <- list()
@@ -132,14 +115,13 @@ results_INSEE <- list()
 
 t1 <- Sys.time()
 
-for (dt in as.Date(df_date$`Date Prevision`)) {
+for (dt in as.Date(dates$`Date Prevision`)) {
   current_date <- as.Date(dt)
   
   # Récupération des documents
   docs <- get_docs_to_merge(
-    current_date = current_date,
-    df_date = df_date,
-    date_prev_BDF = date_publi_prev,
+    date_to_use = current_date,
+    df_date = dates,
     document_folder_BDF = document_folder_BDF,
     document_folder_INSEE = document_folder_INSEE,
     output_folder_BDF = output_folder_BDF,

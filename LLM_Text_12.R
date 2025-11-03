@@ -5,38 +5,17 @@ rm(list = ls())
 source("Library_Nowcasting_LLM.R")
 source("LLM_functions.R")
 source("Script_dates_prev.R")
+source("Parametres_generaux.R")
 
-# Repertoire/ env
-setwd(dirname(getActiveDocumentContext()$path))
-here::i_am("LLM_Text.R")
-load_dot_env('.env')  
+#######################
+#Paramètres spécifiques
+#######################
 
-###################################
-# Paramètres initiaux
-###################################
-
-#Paramètres généraux
-english <- 1
-temp_LLM <- 0.7
-n_repro <- 2
+#Systeme prompt
 sys_prompt <- ifelse(english == 1,
-                     "You will act as the economic agent you are told to be. Answer based on your knowledge and the document provided in less than 200 words, do not invent facts." ,
-                     "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et du document fourni, n'inventez pas de faits.")
-
-#Créer un vecteur de date
-dates <- read_xlsx(here("dates_prev.xlsx"))
-dates <- if (is.data.frame(dates)) as.Date(dates[[1]]) else as.Date(dates)
-
-
-
-document_folder_BDF <- "docEMC_clean"
-document_folder_INSEE <- "INSEE_Scrap"
-
-
-
-
-# API Key (pour ellmer on utilise API_KEY_GEMINI)
-cle_API <- Sys.getenv("API_KEY_GEMINI")
+                     "You will act as the economic agent you are told to be. Answer based on your knowledge and the document provided in less than 200 words. You will use only the information available as of the forecast date, do not invent facts." ,
+                     "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et du document fourni. Vous n'utiliserez que l'information disponible à la date du jour de la prévision, n'inventez pas de faits."
+)
 
 #Initialisation LLM
 if (cle_API == "") stop("Clé API Gemini manquante. Ajoute API_KEY_GEMINI dans env/.Renviron")
@@ -47,8 +26,8 @@ chat_gemini <- chat_google_gemini( system_prompt = sys_prompt,
                                    params(temperature = temp_LLM, max_tokens = 5000)
 )
 
-
-
+document_folder_BDF <- "docEMC_clean"
+document_folder_INSEE <- "INSEE_Scrap"
 
 
 ###################################
@@ -139,7 +118,7 @@ results_BDF <- list()
 row_id_BDF <- 1 
 
 t1 <- Sys.time()
-for (dt in dates) {
+for (dt in as.Date(dates$`Date Prevision`)) {
   current_date <- as.Date(dt) 
   
   # Récupérer les 12 derniers documents
@@ -150,7 +129,7 @@ for (dt in dates) {
 
   
   # Chemin du PDF combiné
-  combined_pdf_path <- file.path("./BDF_files_used/", paste0("combined_BDF_", format(current_date, "%Y%m%d"), ".pdf"))
+  combined_pdf_path <- file.path("./BDF_files_used_12/", paste0("combined_BDF_", format(current_date, "%Y%m%d"), ".pdf"))
   
   # Concaténation des fichiers
   BDF_path <- merge_pdfs(all_bdf_docs_to_combine, combined_pdf_path)
@@ -237,8 +216,8 @@ row_id_INSEE <- 1
 
 t1 <- Sys.time()
 
-for (dt in dates) {
-  current_date <- as.Date(dt) 
+for (dt in as.Date(dates$`Date Prevision`)) {
+  current_date <- as.Date(dt)
   
   all_insee_docs_to_combine <- c(
     get_last_12_insee_docs_by_type(current_date, "EMI",  document_folder_INSEE),
@@ -246,7 +225,7 @@ for (dt in dates) {
     get_last_12_insee_docs_by_type(current_date, "BAT",  document_folder_INSEE)
   )
   
-  combined_pdf_path <- file.path( "./INSEE_files_used/", paste0("combined_INSEE_", format(current_date, "%Y%m%d"), ".pdf"))
+  combined_pdf_path <- file.path( "./INSEE_files_used_12/", paste0("combined_INSEE_", format(current_date, "%Y%m%d"), ".pdf"))
   INSEE_path <- merge_pdfs(all_insee_docs_to_combine, combined_pdf_path)
   
   # Chargement du pdf concaténé souhaité
@@ -308,7 +287,7 @@ for (dt in dates) {
 }
 
 # réunir les prévisions pour chaque date
-df_results_text__12_INSEE <- do.call(rbind, results_INSEE)
+df_results_text_12_INSEE <- do.call(rbind, results_INSEE)
 
 
 # Enregistrement
@@ -319,99 +298,6 @@ t2 <- Sys.time()
 print(diff(range(t1, t2)))
 
 
-##################
-#Stats Descriptives
-###################
-
-bdf_text_long   <- to_long(df_results_text_12_BDF, "BDF")
-insee_text_long <- to_long(df_results_text_12_INSEE, "INSEE")
-
-both_text_long <- bind_rows(bdf_text_long, insee_text_long)
-
-
-# Stats descriptives simples
-stats_des_text <- both_text_long |>
-  group_by(Date, source) |>
-  summarise(
-    Moyenne = mean(forecast, na.rm = TRUE),
-    Médiane = median(forecast, na.rm = TRUE),
-    Variance = var(forecast, na.rm = TRUE),
-    EcartType = sd(forecast, na.rm = TRUE),
-    Skewness = skewness(forecast, na.rm = TRUE),
-    Kurtosis = kurtosis(forecast, na.rm = TRUE),
-    Moyenne_Confiance = mean(confidence, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-
-#Arrangement des df afin de pouvoir mieux les exploiter
-df_BDF_text   <- df_results_text_12_BDF |> select(Date, starts_with("forecast_"))
-df_INSEE_text  <- df_results_text_12_INSEE |> select(Date, starts_with("forecast_"))
-
-colnames(df_BDF_text)[-1]   <- paste0("BDF_",   seq_along(colnames(df_BDF_text)[-1]))
-colnames(df_INSEE_text)[-1] <- paste0("INSEE_", seq_along(colnames(df_INSEE_text)[-1]))
-
-df_BDF_text <- df_BDF_text |> 
-  select(!Date)
-
-df_INSEE_text <- df_INSEE_text |> 
-  select(!Date)
-
-#Corrélation entre les prévisions
-BDF_cor   <- rowMeans(df_BDF_text, na.rm = TRUE)
-INSEE_cor <- rowMeans(df_INSEE_text, na.rm = TRUE)
-
-
-correlation <- cor(BDF_cor, INSEE_cor, method = "spearman") ## à revoir/vérifier avec plus d'observations parce que affiche 1
-#normalement ok :  moyennes à chaque date de forecast (testées avec 4 dates, output correlation =~ 0.889)
-
-
-
-#Test de moyenne entre BDF et INSEE
-
-t.test(df_BDF_text, df_INSEE_text, var.equal = FALSE) 
-# En supposant d'après les résultats précédent (mais à confirmer 
-# avec un plus gros échantillon) que la variances est différente entre les deux
-
-
-
-
-############
-#GRAPHIQUES
-###########
-
-#Distribution  des prev selon BDF/INSEE pour chaque date : violin (((à voir lequel plus pertinent)))
-ggplot(both_text_long, aes(x = source, y = as.numeric(forecast), fill = source)) +
-  geom_violin(alpha = 0.6, trim = FALSE) +
-  facet_wrap(~ Date, scales = "free_y") +
-  labs(
-    title = "Distribution des prévisions par organisme",
-    y = "Prévision",
-    x = "Organisme"
-  ) +
-  theme_minimal()
-
-# Boxplot
-ggplot(both_text_long, aes(x = source, y = as.numeric(forecast), fill = source)) +
-  geom_boxplot(alpha = 0.7, outlier.shape = 16, outlier.size = 1.5) +
-  facet_wrap(~ Date, scales = "free_y") +
-  labs(
-    title = "Distribution des prévisions par organisme (Boxplot)",
-    y = "Prévision",
-    x = "Organisme"
-  ) +
-  theme_minimal()
-
-#Densité
-ggplot(both_text_long, aes(x = as.numeric(forecast), fill = source, color = source)) +
-  geom_density(alpha = 0.4) +
-  facet_wrap(~ Date, scales = "free") +
-  labs(
-    title = "Distribution des prévisions BDF vs INSEE",
-    x = "Prévision",
-    y = "Densité"
-  ) +
-  theme_minimal()
 
 
 

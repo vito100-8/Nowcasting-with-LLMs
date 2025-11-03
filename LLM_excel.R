@@ -1,38 +1,21 @@
 #INSERTION D'UN EXCEL ITERATIF SELON LA PERIODE DE PREVISION AU LLM#
 
-
 rm(list = ls())  
 source("Library_Nowcasting_LLM.R")
 source("LLM_functions.R")
 source("Script_dates_prev.R")
+source("Parametres_generaux.R")
 
 
-# Repertoire/ env
-setwd(dirname(getActiveDocumentContext()$path))
+#######################
+#Paramètres spécifiques
+#######################
 
-here::i_am("LLM_excel.R")
-
-load_dot_env('.env')   
-
-###################################
-# Paramètres initiaux
-###################################
-
-#Paramètres généraux
-english <- 1
-temp_LLM <- 0.7
-n_repro <- 2
+#Systeme prompt
 sys_prompt <- ifelse(english == 1,
-                     "You will act as the economic agent you are told to be. Answer based on your knowledge and the document provided in less than 200 words, do not invent facts." ,
-                     "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et du document fourni, n'inventez pas de faits.")
-
-# Vecteur de dates en exemple
-dates_used <- as.Date(c("2015-02-08"))
-#Dates utilisées
-#dates_used <- read_xlsx(here("dates_prev.xlsx"))
-
-# API Key (pour ellmer on utilise API_KEY_GEMINI)
-cle_API <- Sys.getenv("API_KEY_GEMINI")
+                     "You will act as the economic agent you are told to be. Answer based on your knowledge and the document provided in less than 200 words. You will use only the information available as of the forecast date, do not invent facts." ,
+                     "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et du document fourni. Vous n'utiliserez que l'information disponible à la date du jour de la prévision, n'inventez pas de faits."
+)
 
 #Initialisation LLM
 if (cle_API == "") stop("Clé API Gemini manquante. Ajoute API_KEY_GEMINI dans env/.Renviron")
@@ -42,7 +25,6 @@ chat_gemini <- chat_google_gemini( system_prompt = sys_prompt,
                                    model = "gemini-2.5-pro", 
                                    params(temperature = temp_LLM, max_tokens = 5000)
 )
-
 
 ############################
 #Données et nettoyage
@@ -55,18 +37,11 @@ df_ISMA <- read_xlsx("Data_BDF_INSEE.xlsx", sheet = "mensuel ISMA")
 df_enq_BDF <- read.xlsx("Data_BDF_INSEE.xlsx", sheet = "ENQ_BDF")
 df_enq_INSEE <- read_xlsx("Data_BDF_INSEE.xlsx", sheet = "ENQ_INSEE")
 
-#Nettoyage de df_enq_BDF
-
-df_enq_BDF <- df_enq_BDF |> 
-  slice(6:433) |> 
-  mutate(dates = `Titre.:`, , .keep = "unused") |>
-  select(dates, everything())
 
 
 #Nettoyage de df_enq_INSEE
 
 df_enq_INSEE <- df_enq_INSEE |>
-  rename(dates = `...1`) |>
   mutate(
     dates = str_replace_all(dates, 
                             c("janv\\." = "jan", "févr\\." = "feb", "mars" = "mar",
@@ -76,15 +51,8 @@ df_enq_INSEE <- df_enq_INSEE |>
   ) |>
   mutate(dates = as.Date(parse_date_time(dates, orders = "b Y"), origin = "1970-01-01"))
 
-new_names <- paste0(names(df_enq_INSEE), " : ", df_enq_INSEE[1, ])
-colnames(df_enq_INSEE) <- new_names
 
 
-df_enq_INSEE <- df_enq_INSEE |>
-  slice(2:430)|>
-  mutate(
-    dates = `dates : NA`, .keep = "unused") |>
-  select(dates, everything())
 
 
 ####################################
@@ -177,13 +145,14 @@ dir.create("Indicateurs_BDF", showWarnings = FALSE)
 results_uploads_BDF <- list()
 row_id_BDF <- 1
 
-for (d in dates_used) { #si on utilise uniquement un vecteur de date en texte
-  #for (d in dates_used$`Date Prevision`) {  ### si on utilise tout le df
+for (dt in as.Date(dates$`Date Prevision`)) {
+  current_date <- as.Date(d)
+  
   # Tronquage
   df_temp <- df_enq_BDF |> 
     filter(dates <= as.Date(d))
   
-  current_date <- as.Date(d)
+
   # Nom du fichier Excel
   file_name <- paste0("date_max_BDF_", format(current_date, "%Y%m%d"), ".csv")
   
@@ -265,13 +234,15 @@ dir.create("Indicateurs_INSEE", showWarnings = FALSE)
 results_uploads_INSEE <- list()
 row_id_INSEE <- 1
 
-for (d in dates_used) {
-  #for (d in dates_used$`Date Prevision`) { #idem que pour BDF  
+for (dt in as.Date(dates$`Date Prevision`)) {
+  current_date <- as.Date(d)
+  
+  
   # Tronquage
   df_temp <- df_enq_INSEE |> 
-    filter(dates <= as.Date(d))
+    filter(dates <= current_date)
   
-  current_date <- as.Date(d)
+
   # Nom du fichier CSV
   file_name <- paste0("date_max_INSEE_", format(current_date, "%Y%m%d"), ".csv")
   

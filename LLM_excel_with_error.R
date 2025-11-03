@@ -5,35 +5,17 @@ rm(list = ls())
 source("Library_Nowcasting_LLM.R")
 source("LLM_functions.R")
 source("Script_dates_prev.R")
+source("Parametres_generaux.R")
 
+#######################
+#Paramètres spécifiques
+#######################
 
-# Repertoire/ env
-setwd(dirname(getActiveDocumentContext()$path))
-
-here::i_am("LLM_excel_with_error.R")
-
-load_dot_env('.env')   
-
-################
-# Paramètres 
-###############
-
-#Paramètres généraux
-english <- 1
-temp_LLM <- 0.7
-n_repro <- 2
+#Systeme prompt
 sys_prompt <- ifelse(english == 1,
-                     "You will act as the economic agent you are told to be. Answer based on your knowledge and the document provided in less than 200 words, do not invent facts." ,
-                     "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et du document fourni, n'inventez pas de faits.")
-
-# Vecteur de dates en exemple
-dates_used <- as.Date(c("2015-02-08", "2015-03-10", "2015-04-12"))
-#Dates utilisées
-#dates_used <- read_xlsx(here("dates_prev.xlsx"))
-
-
-# API Key (pour ellmer on utilise API_KEY_GEMINI)
-cle_API <- Sys.getenv("API_KEY_GEMINI")
+                     "You will act as the economic agent you are told to be. Answer based on your knowledge and the document provided in less than 200 words. You will use only the information available as of the forecast date, do not invent facts." ,
+                     "Vous allez incarner des agents économiques spécifiés. Répondez aux questions en moins de 200 mots, à l'aide de vos connaissances et du document fourni. Vous n'utiliserez que l'information disponible à la date du jour de la prévision, n'inventez pas de faits."
+)
 
 #Initialisation LLM
 if (cle_API == "") stop("Clé API Gemini manquante. Ajoute API_KEY_GEMINI dans env/.Renviron")
@@ -61,7 +43,7 @@ if ("dates" %in% names(df_enq_INSEE)) df_enq_INSEE$dates <- as.Date(df_enq_INSEE
 if ("dates" %in% names(df_PIB)) df_PIB$dates <- as.Date(df_PIB$dates)
 
 #Bien transformer les dates en un vecteur
-dates_vector <- if (is.data.frame(dates_used)) as.Date(dates_used[[1]]) else as.Date(dates_used)
+dates <- if (is.data.frame(dates)) as.Date(dates[[1]]) else as.Date(dates)
 
 # Variables contenant les futures erreurs de prévision
 errors_BDF <- rep(NA_real_, length(dates_vector))
@@ -78,17 +60,7 @@ forecast_confidence_pattern <- "([+-]?\\d+\\.?\\d*)\\s*\\(\\s*(\\d{1,3})\\s*\\)"
 #################
 #Nettoyage données
 ##################
-#Nettoyage de df_enq_BDF
 
-df_enq_BDF <- df_enq_BDF |> 
-  slice(6:433) |> 
-  mutate(dates = `Titre :`, , .keep = "unused") |>
-  select(dates, everything())
-
-#Normalisation des dates au jour 1 de chaque mois
-if ("dates" %in% names(df_enq_BDF)) {
-  df_enq_BDF$dates <- as.Date(format(as.Date(df_enq_BDF$dates), "%Y-%m-01"))
-}
 
 #Nettoyage de df_enq_INSEE
 
@@ -102,16 +74,6 @@ df_enq_INSEE <- df_enq_INSEE |>
                               "oct\\." = "oct", "nov\\." = "nov", "déc\\." = "dec"))
   ) |>
   mutate(dates = as.Date(parse_date_time(dates, orders = "b Y"), origin = "1970-01-01"))
-
-new_names <- paste0(names(df_enq_INSEE), " : ", df_enq_INSEE[1, ])
-colnames(df_enq_INSEE) <- new_names
-
-
-df_enq_INSEE <- df_enq_INSEE |>
-  slice(2:430)|>
-  mutate(
-    dates = `dates : NA`, .keep = "unused") |>
-  select(dates, everything())
 
 
 
@@ -201,8 +163,8 @@ dir.create("Indicateurs_BDF_error", showWarnings = FALSE)
 results_uploads_BDF <- list()
 row_id_BDF <- 1
 
-for (idx in seq_along(dates_vector)) {
-  current_date <- dates_vector[idx]
+for (idx in seq_along(dates)) {
+  current_date <- as.Date(dates[idx])
   
   # prendre les données les plus récentes
     avail_idx <- which(as.Date(df_enq_BDF$dates) <= current_date)
@@ -329,8 +291,8 @@ dir.create("indicateurs_INSEE_error", showWarnings = FALSE)
 results_uploads_INSEE <- list()
 row_id_INSEE <- 1
 
-for (idx in seq_along(dates_vector)) {
-  current_date <- dates_vector[idx]
+for (idx in seq_along(dates)) {
+  current_date <- as.Date(dates[idx])
 
   if ("dates" %in% names(df_enq_INSEE)) {
     avail_idx <- which(as.Date(df_enq_INSEE$dates) <= current_date)
