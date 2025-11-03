@@ -33,7 +33,6 @@ chat_gemini <- chat_google_gemini( system_prompt = sys_prompt,
 #Téléchargement données
 
 df_PIB <- read_xlsx("Data_BDF_INSEE.xlsx", sheet = "trimestriel")
-df_ISMA <- read_xlsx("Data_BDF_INSEE.xlsx", sheet = "mensuel ISMA")
 df_enq_BDF <- read.xlsx("Data_BDF_INSEE.xlsx", sheet = "ENQ_BDF")
 df_enq_INSEE <- read_xlsx("Data_BDF_INSEE.xlsx", sheet = "ENQ_INSEE")
 
@@ -41,7 +40,6 @@ df_enq_INSEE <- read_xlsx("Data_BDF_INSEE.xlsx", sheet = "ENQ_INSEE")
 #Nettoyage de df_enq_INSEE
 
 df_enq_INSEE <- df_enq_INSEE |>
-  rename(dates = `...1`) |>
   mutate(
     dates = str_replace_all(dates, 
                             c("janv\\." = "jan", "févr\\." = "feb", "mars" = "mar",
@@ -49,8 +47,13 @@ df_enq_INSEE <- df_enq_INSEE |>
                               "juil\\." = "jul", "août" = "aug", "sept\\." = "sep",
                               "oct\\." = "oct", "nov\\." = "nov", "déc\\." = "dec"))
   ) |>
-  mutate(dates = as.Date(parse_date_time(dates, orders = "b Y"), origin = "1970-01-01"))
+  mutate(dates_temp = as.Date(parse_date_time(dates, orders = "b Y"), origin = "1970-01-01")) 
 
+
+v_dates <- rollforward(df_enq_INSEE$dates_temp)
+df_enq_INSEE <- df_enq_INSEE |>
+  mutate(dates = v_dates) |>
+  select(!dates_temp)
 
 
 ###################################

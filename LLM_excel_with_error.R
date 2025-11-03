@@ -33,14 +33,8 @@ chat_gemini <- chat_google_gemini( system_prompt = sys_prompt,
 
 #Téléchargement données
 df_PIB<- read_xlsx("Data_BDF_INSEE.xlsx", sheet = "trimestriel")
-df_ISMA <- read_xlsx("Data_BDF_INSEE.xlsx", sheet = "mensuel ISMA")
 df_enq_BDF <- read_xlsx("Data_BDF_INSEE.xlsx", sheet = "ENQ_BDF")
 df_enq_INSEE <- read_xlsx("Data_BDF_INSEE.xlsx", sheet = "ENQ_INSEE")
-
-# colonnes de dates en classe Date
-if ("dates" %in% names(df_enq_BDF)) df_enq_BDF$dates <- as.Date(df_enq_BDF$dates)
-if ("dates" %in% names(df_enq_INSEE)) df_enq_INSEE$dates <- as.Date(df_enq_INSEE$dates)
-if ("dates" %in% names(df_PIB)) df_PIB$dates <- as.Date(df_PIB$dates)
 
 #Bien transformer les dates en un vecteur
 dates <- if (is.data.frame(dates)) as.Date(dates[[1]]) else as.Date(dates)
@@ -65,7 +59,6 @@ forecast_confidence_pattern <- "([+-]?\\d+\\.?\\d*)\\s*\\(\\s*(\\d{1,3})\\s*\\)"
 #Nettoyage de df_enq_INSEE
 
 df_enq_INSEE <- df_enq_INSEE |>
-  rename(dates = `...1`) |>
   mutate(
     dates = str_replace_all(dates, 
                             c("janv\\." = "jan", "févr\\." = "feb", "mars" = "mar",
@@ -73,9 +66,19 @@ df_enq_INSEE <- df_enq_INSEE |>
                               "juil\\." = "jul", "août" = "aug", "sept\\." = "sep",
                               "oct\\." = "oct", "nov\\." = "nov", "déc\\." = "dec"))
   ) |>
-  mutate(dates = as.Date(parse_date_time(dates, orders = "b Y"), origin = "1970-01-01"))
+  mutate(dates_temp = as.Date(parse_date_time(dates, orders = "b Y"), origin = "1970-01-01")) 
 
 
+v_dates <- rollforward(df_enq_INSEE$dates_temp)
+df_enq_INSEE <- df_enq_INSEE |>
+  mutate(dates = v_dates) |>
+  select(!dates_temp)
+
+
+# colonnes de dates en classe Date
+if ("dates" %in% names(df_enq_BDF)) df_enq_BDF$dates <- as.Date(df_enq_BDF$dates)
+if ("dates" %in% names(df_enq_INSEE)) df_enq_INSEE$dates <- as.Date(df_enq_INSEE$dates)
+if ("dates" %in% names(df_PIB)) df_PIB$dates <- as.Date(df_PIB$dates)
 
 ####################################
 # Prompts

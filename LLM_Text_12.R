@@ -109,6 +109,9 @@ if (english == 1) {
 # Boucle principale BDF
 ###################################
 
+#Création chemin d'accès
+dir.create("./BDF_files_used_12", showWarnings = FALSE, recursive = TRUE)
+
 
 # Forecast regex pattern qui sera appelé dans la boucle pour parse
 forecast_confidence_pattern <- "([+-]?\\d+\\.?\\d*)\\s*\\(\\s*(\\d{1,3})\\s*\\)"
@@ -206,6 +209,9 @@ print(diff(range(t1, t2)))
 ########################
 #BOUCLE PRINCIPALE INSEE
 ########################
+
+#Création chemin d'accès
+dir.create("./INSEE_files_used_12", showWarnings = FALSE, recursive = TRUE)
 
 # Forecast regex pattern qui sera appelé dans la boucle pour parse
 forecast_confidence_pattern <- "([+-]?\\d+\\.?\\d*)\\s*\\(\\s*(\\d{1,3})\\s*\\)"
