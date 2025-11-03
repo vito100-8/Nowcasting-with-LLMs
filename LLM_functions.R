@@ -286,7 +286,7 @@ get_docs_to_merge <- function(date_to_use,
                               document_folder_INSEE ,
                               output_folder_BDF,
                               output_folder_INSEE) {
-
+  
   #sécurité 
   if (!dir.exists(output_folder_BDF)) dir.create(output_folder_BDF, recursive = TRUE)
   if (!dir.exists(output_folder_INSEE)) dir.create(output_folder_INSEE, recursive = TRUE)
@@ -314,24 +314,23 @@ get_docs_to_merge <- function(date_to_use,
   quarter_months <- quarter_first_month:(quarter_first_month + 2)
   # on sélectionne les mois voulus selon la date (ordre ancien->récent)
   months_to_fetch <- quarter_months[1:months_in_quarter]
+
+ #Partie BDF
   
- #BOUCLE BDF
   BDF_docs_to_merge <- c()
   current_ref_date <- date_to_use
 
-  # Boucle pour récupérer autant de documents EMC que nécessaire
-  for (j in months_to_fetch) {
+    #On va prendre tous les EMC publié à la date ou avant et n'en garder que le nombre souhaité (sleon position du mois dans trimestre)
+    candidats <- date_publi_prev |>
+      filter(date_finale_d <= as.Date(current_ref_date) + 1L)
+    next_doc_name <- candidats |>
+      arrange(desc(date_finale_d))
     
-    next_doc_name <- get_next_doc(current_ref_date)
-      full_path <- path_from_docname(next_doc_name, folder = document_folder_BDF)
-      BDF_docs_to_merge <- c(BDF_docs_to_merge, full_path)
-      
-      current_index <- which(df_date$`Date Prevision` == current_ref_date)
-      current_ref_date <- df_date$`Date Prevision`[current_index - 1]
-  }
+  docs_selected <- head(candidats$fichier, months_in_quarter)
+    
+   # chemins PDF complets
+  BDF_docs_to_merge <- file.path(document_folder_BDF, selected)
   
-  BDF_combined_path <- file.path(output_folder_BDF,
-                              paste0("combined_BDF_", format(current_date, "%Y%m%d"), ".pdf"))
   merge_pdfs(BDF_docs_to_merge, BDF_combined_path)
   
   #BOUCLE INSEE
